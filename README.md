@@ -1,12 +1,12 @@
 # ComfyUI Web Interface
 
-Flask-based web UI for ComfyUI image generation with queue management, real-time updates, and metadata tracking.
+Flask-based web UI for ComfyUI image generation with tab-based interface, queue management with history, real-time updates, and metadata tracking.
 
 ## Features
 
-- 🎨 Clean, dark-themed web interface
-- 📋 Queue management system with real-time updates
-- 🖼️ Image gallery with fullscreen viewer
+- 🎨 Clean, dark-themed web interface with tab navigation
+- 📋 Queue management system with completed history (shows thumbnails)
+- 🖼️ Image gallery with fullscreen viewer and keyboard/touch navigation
 - 📁 Hierarchical folder management (browse, create, move, delete)
 - 🎯 Selection mode for batch operations (multi-select files/folders)
 - 💾 Metadata tracking (prompts, dimensions, seeds, NSFW mode, file prefix)
@@ -15,6 +15,7 @@ Flask-based web UI for ComfyUI image generation with queue management, real-time
 - 📱 Touch/swipe support for mobile devices
 - 🗑️ Delete images with confirmation dialog
 - 🎭 Custom modal dialogs (no browser popups)
+- 🧹 Clear queue button with confirmation
 - 🔒 Git ignore and AI crawler protection
 
 ## Requirements
@@ -43,27 +44,40 @@ Flask-based web UI for ComfyUI image generation with queue management, real-time
 
 ## Usage
 
+### Tab Navigation
+
+The interface has three tabs:
+- **Single Generation**: Generate individual images with full parameter control
+- **Batch Generation**: (Coming soon) Generate multiple images with variations
+- **Image Browser**: Browse, organize, and manage your generated images
+
 ### Generate Images
 
-1. Enter your prompt in the text area
-2. Adjust parameters:
+1. Navigate to the **Single Generation** tab (default)
+2. Enter your prompt in the text area
+3. Adjust parameters:
    - **Width/Height**: Image dimensions (default: 512×1024)
    - **Steps**: Sampling steps (default: 4)
-   - **Seed**: Random seed (leave empty for random)
-   - **NSFW**: Toggle NSFW mode (button changes color when active)
+   - **Seed**: Random seed (leave empty for random, ✕ button to clear)
+   - **NSFW**: Toggle NSFW mode (button turns red when active)
    - **File Prefix**: Custom filename prefix (default: "comfyui")
-   - **Subfolder**: Target folder for output (optional)
-3. Click "Generate" to add to queue
-4. Images appear in the folder browser when complete
+   - **Subfolder**: Target folder for output (optional, set from browser)
+4. Click "Generate" to add to queue
+5. Watch progress in the left sidebar queue panel
+6. Completed items show thumbnail images - click to jump to Image Browser
 
 ### View Images
 
-- Click any image to open detail view
-- Use arrow buttons or keyboard (←/→/A/D) to navigate
+- Navigate to the **Image Browser** tab to see your gallery
+- Click any image to open detail view with metadata
+- Use arrow buttons or keyboard (←/→/A/D) to navigate between images
 - Click fullscreen button for immersive viewing
-- Controls auto-hide after 2 seconds in fullscreen
-- Click "Import" to load image parameters back into form
-- Click "Delete Image" to remove image (with confirmation)
+- Controls auto-hide after 2 seconds in fullscreen (move mouse to show)
+- Click "Import" to load image parameters back into Single Generation form
+  - Automatically switches to Single Generation tab
+  - Loads all parameters including seed and NSFW state
+  - Scrolls to form for easy editing
+- Click "Delete Image" to remove image (with custom confirmation dialog)
 
 ### Manage Folders
 
@@ -79,10 +93,16 @@ Flask-based web UI for ComfyUI image generation with queue management, real-time
 
 ### Queue Management
 
-- View active generation and queued jobs in left sidebar
+- View all jobs in left sidebar (queued → active → completed)
+- **Queued items** appear at top (newest first) with status badge
+- **Active item** shows in middle while generating
+- **Completed items** display at bottom with thumbnail images
 - Cancel queued jobs with the ✕ button
-- Queue processes one image at a time
+- Clear entire queue with trash icon in queue header
+- Click completed thumbnails to navigate to image in browser
+- Queue processes oldest first (FIFO) but displays newest on top
 - Real-time status updates every second
+- Keeps last 10 completed jobs with images
 
 ## Parameters
 
@@ -116,10 +136,11 @@ Flask-based web UI for ComfyUI image generation with queue management, real-time
 
 ## API Endpoints
 
-- `GET /` - Main web interface
-- `POST /api/queue` - Add generation job to queue
-- `GET /api/queue` - Get queue status
-- `DELETE /api/queue/<job_id>` - Cancel queued job
+- `GET /` - Main web interface with tabs
+- `POST /api/queue` - Add generation job to queue (adds to front)
+- `GET /api/queue` - Get queue status (returns queued, active, completed)
+- `DELETE /api/queue/<job_id>` - Cancel specific queued job
+- `POST /api/queue/clear` - Clear all queued and completed items (preserves active)
 - `GET /api/browse` - Browse folder contents (files and subfolders)
 - `POST /api/folder` - Create new subfolder
 - `POST /api/move` - Move files/folders (with conflict resolution)

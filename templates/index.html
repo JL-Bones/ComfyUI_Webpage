@@ -12,20 +12,32 @@
         <aside class="queue-sidebar" id="queueSidebar">
             <div class="queue-header">
                 <h2>Queue</h2>
-                <button class="toggle-queue" id="toggleQueue" title="Toggle Queue">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="15 18 9 12 15 6"></polyline>
-                    </svg>
-                </button>
+                <div class="queue-header-actions">
+                    <button class="btn-icon" id="clearQueueBtn" title="Clear Queue">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        </svg>
+                    </button>
+                    <button class="toggle-queue" id="toggleQueue" title="Toggle Queue">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="15 18 9 12 15 6"></polyline>
+                        </svg>
+                    </button>
+                </div>
             </div>
             
             <div class="queue-content">
-                <div class="active-job" id="activeJob">
-                    <!-- Active job will be displayed here -->
+                <div class="queue-list" id="queueList">
+                    <!-- Queued items will be displayed here -->
                 </div>
                 
-                <div class="queue-list" id="queueList">
-                    <!-- Queue items will be displayed here -->
+                <div class="active-job" id="activeJob">
+                    <!-- Active/generating job will be displayed here -->
+                </div>
+                
+                <div class="completed-list" id="completedList">
+                    <!-- Completed items will be displayed here -->
                 </div>
                 
                 <div class="queue-empty" id="queueEmpty">
@@ -40,37 +52,30 @@
                 <h1>ComfyUI Imaginer</h1>
             </header>
 
-            <div class="content-wrapper">
-                <!-- Generation Form -->
-                <section class="generation-panel">
-                    <div class="form-group">
-                        <label for="prompt">Prompt</label>
-                        <textarea 
-                            id="prompt" 
-                            rows="4" 
-                            placeholder="Enter your prompt here..."
-                            class="form-control"
-                        ></textarea>
-                    </div>
+            <!-- Tab Navigation -->
+            <div class="tab-navigation">
+                <button class="tab-btn active" data-tab="single">Single Generation</button>
+                <button class="tab-btn" data-tab="batch">Batch Generation</button>
+                <button class="tab-btn" data-tab="browser">Image Browser</button>
+            </div>
 
-                    <div class="parameters-grid">
+            <div class="content-wrapper">
+                <!-- Single Generation Tab -->
+                <section class="tab-content active" id="singleTab">
+                    <div class="generation-panel">
                         <div class="form-group">
-                            <label class="checkbox-label" id="nsfwToggle">
-                                <input 
-                                    type="checkbox" 
-                                    id="nsfw"
-                                    class="form-checkbox"
-                                    style="display: none;"
-                                >
-                                <svg class="checkbox-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                                    <polyline points="20 6 9 17 4 12"></polyline>
-                                </svg>
-                                <span>NSFW Mode</span>
-                            </label>
+                            <label for="prompt">Prompt</label>
+                            <textarea 
+                                id="prompt" 
+                                rows="4" 
+                                placeholder="Enter your prompt here..."
+                                class="form-control"
+                            ></textarea>
                         </div>
 
-                        <div class="form-group">
-                            <label for="width">Width</label>
+                        <div class="parameters-grid">
+                            <div class="form-group">
+                                <label for="width">Width</label>
                             <input 
                                 type="number" 
                                 id="width" 
@@ -145,6 +150,22 @@
                                 readonly
                             >
                         </div>
+
+                        <div class="form-group nsfw-group">
+                            <label>&nbsp;</label>
+                            <label class="checkbox-label" id="nsfwToggle">
+                                <input 
+                                    type="checkbox" 
+                                    id="nsfw"
+                                    class="form-checkbox"
+                                    style="display: none;"
+                                >
+                                <svg class="checkbox-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                    <polyline points="20 6 9 17 4 12"></polyline>
+                                </svg>
+                                <span>NSFW Mode</span>
+                            </label>
+                        </div>
                     </div>
 
                     <button class="btn btn-primary btn-large" id="generateBtn">
@@ -153,10 +174,19 @@
                         </svg>
                         Generate
                     </button>
+                    </div>
                 </section>
 
-                <!-- Image Gallery -->
-                <section class="gallery-panel">
+                <!-- Batch Generation Tab -->
+                <section class="tab-content" id="batchTab">
+                    <div class="generation-panel">
+                        <p style="text-align: center; color: var(--text-muted); padding: 4rem 2rem;">Batch generation coming soon...</p>
+                    </div>
+                </section>
+
+                <!-- Image Browser Tab -->
+                <section class="tab-content" id="browserTab">
+                    <div class="gallery-panel">
                     <div class="gallery-header">
                         <h2>Image Browser</h2>
                         <div class="gallery-toolbar">
@@ -214,6 +244,7 @@
                     
                     <div class="gallery-empty" id="galleryEmpty">
                         <p>No items in this folder</p>
+                    </div>
                     </div>
                 </section>
             </div>

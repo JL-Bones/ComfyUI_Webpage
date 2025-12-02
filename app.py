@@ -22,6 +22,8 @@ METADATA_FILE = OUTPUT_DIR / "metadata.json"
 
 # Global queue and status
 generation_queue = []
+completed_jobs = []  # Keep last 10 completed jobs
+MAX_COMPLETED_HISTORY = 10
 queue_lock = threading.Lock()
 active_generation = None
 
@@ -125,7 +127,7 @@ def process_queue():
         
         with queue_lock:
             if generation_queue and not active_generation:
-                job = generation_queue[0]
+                job = generation_queue[-1]  # Take from end (oldest item)
                 active_generation = job
                 job['status'] = 'generating'
         
@@ -169,6 +171,7 @@ def process_queue():
                 
                 job['status'] = 'completed'
                 job['output_path'] = str(output_path)
+                job['relative_path'] = str(relative_path)
                 job['metadata_id'] = metadata_entry['id']
                 job['completed_at'] = datetime.now().isoformat()
                 job['refresh_folder'] = True
@@ -180,8 +183,14 @@ def process_queue():
             
             finally:
                 with queue_lock:
-                    if generation_queue and generation_queue[0]['id'] == job['id']:
-                        generation_queue.pop(0)
+                    if generation_queue and generation_queue[-1]['id'] == job['id']:
+                        generation_queue.pop()  # Remove from end
+                    
+                    # Add to completed jobs history
+                    completed_jobs.insert(0, job)
+                    if len(completed_jobs) > MAX_COMPLETED_HISTORY:
+                        completed_jobs.pop()
+                    
                     active_generation = None
         else:
             time.sleep(0.5)
@@ -218,7 +227,7 @@ def add_to_queue():
     }
     
     with queue_lock:
-        generation_queue.append(job)
+        generation_queue.insert(0, job)  # Add to front of queue
     
     return jsonify({'success': True, 'job_id': job['id']})
 
@@ -229,10 +238,12 @@ def get_queue():
     with queue_lock:
         queue_copy = generation_queue.copy()
         active = active_generation.copy() if active_generation else None
+        completed_copy = completed_jobs.copy()
     
     return jsonify({
         'queue': queue_copy,
-        'active': active
+        'active': active,
+        'completed': completed_copy
     })
 
 
@@ -246,6 +257,16 @@ def cancel_job(job_id):
                 return jsonify({'success': True})
     
     return jsonify({'success': False, 'error': 'Job not found or already processing'}), 404
+
+
+@app.route('/api/queue/clear', methods=['POST'])
+def clear_queue():
+    """Clear all queued and completed jobs (not the active one)"""
+    with queue_lock:
+        generation_queue.clear()
+        completed_jobs.clear()
+    
+    return jsonify({'success': True})
 
 
 @app.route('/api/browse')

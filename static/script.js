@@ -17,6 +17,7 @@ let selectionMode = false;
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
     initializeEventListeners();
+    initializeTabs();
     browseFolder('');
     startQueueUpdates();
 });
@@ -25,6 +26,7 @@ document.addEventListener('DOMContentLoaded', function() {
 function initializeEventListeners() {
     // Queue toggle
     document.getElementById('toggleQueue').addEventListener('click', toggleQueue);
+    document.getElementById('clearQueueBtn').addEventListener('click', clearQueue);
     
     // Generate button
     document.getElementById('generateBtn').addEventListener('click', generateImage);
@@ -61,6 +63,44 @@ function initializeEventListeners() {
     
     // Keyboard shortcuts
     document.addEventListener('keydown', handleKeyboard);
+}
+
+// Tab Management
+function initializeTabs() {
+    const tabButtons = document.querySelectorAll('.tab-btn');
+    
+    tabButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const targetTab = button.getAttribute('data-tab');
+            switchTab(targetTab);
+        });
+    });
+}
+
+function switchTab(tabName) {
+    // Update button states
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.getAttribute('data-tab') === tabName) {
+            btn.classList.add('active');
+        }
+    });
+    
+    // Update content visibility
+    document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.remove('active');
+    });
+    
+    const tabs = {
+        'single': 'singleTab',
+        'batch': 'batchTab',
+        'browser': 'browserTab'
+    };
+    
+    const targetContent = document.getElementById(tabs[tabName]);
+    if (targetContent) {
+        targetContent.classList.add('active');
+    }
 }
 
 // NSFW Toggle
@@ -210,6 +250,26 @@ function toggleQueue() {
     sidebar.classList.toggle('collapsed');
 }
 
+async function clearQueue() {
+    const confirmed = await showConfirm('Clear all queued and completed items? This will not cancel the currently generating item.', 'Clear Queue');
+    if (!confirmed) return;
+    
+    try {
+        const response = await fetch('/api/queue/clear', {
+            method: 'POST'
+        });
+        
+        if (response.ok) {
+            updateQueue();
+        } else {
+            await showAlert('Failed to clear queue', 'Error');
+        }
+    } catch (error) {
+        console.error('Error clearing queue:', error);
+        await showAlert('Error clearing queue', 'Error');
+    }
+}
+
 function startQueueUpdates() {
     updateQueue();
     queueUpdateInterval = setInterval(updateQueue, 1000);
@@ -220,7 +280,7 @@ async function updateQueue() {
         const response = await fetch('/api/queue');
         const data = await response.json();
         
-        renderQueue(data.queue, data.active);
+        renderQueue(data.queue, data.active, data.completed || []);
         
         // Check if active job just completed with refresh flag
         if (data.active && data.active.status === 'completed' && data.active.refresh_folder) {
@@ -232,55 +292,77 @@ async function updateQueue() {
     }
 }
 
-function renderQueue(queue, active) {
+function renderQueue(queue, active, completed) {
     const queueList = document.getElementById('queueList');
     const activeJob = document.getElementById('activeJob');
+    const completedList = document.getElementById('completedList');
     const queueEmpty = document.getElementById('queueEmpty');
     
-    // Render active job
+    // Filter out the active job from the queue to avoid duplicates
+    if (active) {
+        queue = queue.filter(job => job.id !== active.id);
+    }
+    
+    // Render queued jobs at the top
+    if (queue.length > 0) {
+        queueList.innerHTML = queue.map(job => renderQueueItem(job, false)).join('');
+        queueList.style.display = 'block';
+    } else {
+        queueList.innerHTML = '';
+        queueList.style.display = 'none';
+    }
+    
+    // Render active/generating job in the middle
     if (active) {
         activeJob.innerHTML = renderQueueItem(active, true);
         activeJob.style.display = 'block';
-        
-        // Filter out the active job from the queue to avoid duplicates
-        queue = queue.filter(job => job.id !== active.id);
     } else {
         activeJob.style.display = 'none';
     }
     
-    // Render queued jobs
-    if (queue.length > 0) {
-        queueList.innerHTML = queue.map(job => renderQueueItem(job, false)).join('');
-        queueEmpty.style.display = 'none';
-    } else if (!active) {
-        queueList.innerHTML = '';
-        queueEmpty.style.display = 'block';
+    // Render completed jobs at the bottom
+    if (completed && completed.length > 0) {
+        completedList.innerHTML = completed.map(job => renderQueueItem(job, false)).join('');
+        completedList.style.display = 'block';
     } else {
-        queueList.innerHTML = '';
-        queueEmpty.style.display = 'none';
+        completedList.innerHTML = '';
+        completedList.style.display = 'none';
     }
+    
+    // Show empty message only if nothing to display
+    const hasItems = queue.length > 0 || active || (completed && completed.length > 0);
+    queueEmpty.style.display = hasItems ? 'none' : 'block';
 }
 
 function renderQueueItem(job, isActive) {
     const statusClass = `status-${job.status}`;
+    const hasImage = job.status === 'completed' && job.relative_path;
+    
     return `
-        <div class="queue-item ${isActive ? 'active' : ''}">
-            <div class="queue-item-header">
-                <span class="queue-item-status ${statusClass}">${job.status}</span>
-                ${job.status === 'queued' ? `
-                    <button class="queue-item-cancel" onclick="cancelJob('${job.id}')">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <line x1="18" y1="6" x2="6" y2="18"></line>
-                            <line x1="6" y1="6" x2="18" y2="18"></line>
-                        </svg>
-                    </button>
-                ` : ''}
-            </div>
-            <div class="queue-item-prompt">${escapeHtml(job.prompt)}</div>
-            <div class="queue-item-params">
-                <span class="param-badge">${job.width}x${job.height}</span>
-                <span class="param-badge">${job.steps} steps</span>
-                ${job.nsfw ? '<span class="param-badge nsfw-badge">NSFW</span>' : ''}
+        <div class="queue-item ${isActive ? 'active' : ''} ${hasImage ? 'has-image' : ''}">
+            ${hasImage ? `
+                <div class="queue-item-image">
+                    <img src="/outputs/${job.relative_path}" alt="Generated image" onclick="event.stopPropagation(); openCompletedImage('${job.relative_path}')">
+                </div>
+            ` : ''}
+            <div class="queue-item-content">
+                <div class="queue-item-header">
+                    <span class="queue-item-status ${statusClass}">${job.status}</span>
+                    ${job.status === 'queued' ? `
+                        <button class="queue-item-cancel" onclick="cancelJob('${job.id}')">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </button>
+                    ` : ''}
+                </div>
+                <div class="queue-item-prompt">${escapeHtml(job.prompt)}</div>
+                <div class="queue-item-params">
+                    <span class="param-badge">${job.width}x${job.height}</span>
+                    <span class="param-badge">${job.steps} steps</span>
+                    ${job.nsfw ? '<span class="param-badge nsfw-badge">NSFW</span>' : ''}
+                </div>
             </div>
         </div>
     `;
@@ -298,6 +380,18 @@ async function cancelJob(jobId) {
     } catch (error) {
         console.error('Error canceling job:', error);
     }
+}
+
+function openCompletedImage(relativePath) {
+    // Switch to browser tab and find the image
+    switchTab('browser');
+    
+    // Extract folder path from relative path
+    const parts = relativePath.split(/[\/\\]/);
+    const folderPath = parts.length > 1 ? parts.slice(0, -1).join('/') : '';
+    
+    // Browse to the folder containing the image
+    browseFolder(folderPath);
 }
 
 // Image Generation

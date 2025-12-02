@@ -1,21 +1,28 @@
 # ComfyUI Web Interface - AI Agent Instructions
 
 ## Project Overview
-Flask-based web UI for ComfyUI image generation with hierarchical folder management, custom modals, queue system, and real-time updates. **Requires ComfyUI server running on `http://127.0.0.1:8188`**.
+Flask-based web UI for ComfyUI image generation with **tab-based interface**, hierarchical folder management, custom modals, queue system with completed history, and real-time updates. **Requires ComfyUI server running on `http://127.0.0.1:8188`**.
 
 ## Architecture
 
 ### Three-Layer System
 1. **ComfyUI Client** (`comfyui_client.py`): Python wrapper around ComfyUI REST API using only stdlib
-2. **Flask Backend** (`app.py`): Queue processor, folder management, metadata storage, serves web UI on `0.0.0.0:4879`
-3. **Frontend** (`templates/index.html`, `static/`): Dark-themed SPA with folder browser, custom modals, and fullscreen image viewer
+2. **Flask Backend** (`app.py`): Queue processor with LIFO display/FIFO processing, folder management, metadata storage, serves web UI on `0.0.0.0:4879`
+3. **Frontend** (`templates/index.html`, `static/`): Dark-themed tabbed SPA with folder browser, custom modals, and fullscreen image viewer
 
 ### Data Flow
 ```
-User Input → Flask Queue → Background Thread → ComfyUI API → Image + Metadata Storage
-                ↓                                                        ↓
-         Real-time Queue Updates (1s polling)              Folder Browser with Auto-refresh
+User Input → Flask Queue (LIFO display) → Background Thread (FIFO processing) → ComfyUI API → Image + Metadata Storage
+                ↓                                                                                     ↓
+         Real-time Queue Updates (1s polling)                                    Folder Browser with Auto-refresh
+         Queued → Active → Completed (with thumbnails)
 ```
+
+### Tab System
+Three main tabs switch content visibility:
+- **Single Generation**: Image generation form (active by default)
+- **Batch Generation**: Placeholder for future batch operations
+- **Image Browser**: Folder navigation and image gallery
 
 ## Critical Workflow Nodes (Imaginer.json)
 
@@ -53,21 +60,37 @@ def get_unique_filename(target_path: Path) -> Path:
 
 ### Queue Management Pattern
 ```python
-# Thread-safe queue with lock
+# Thread-safe LIFO display / FIFO processing
+with queue_lock:
+    generation_queue.insert(0, job)  # Add to FRONT (newest at top)
+    
+# Processing takes from END (oldest first)
 with queue_lock:
     if generation_queue and not active_generation:
-        job = generation_queue[0]
-        active_generation = job  # Mark as active FIRST
+        job = generation_queue[-1]  # Take from end (oldest item)
+        active_generation = job
         job['status'] = 'generating'
+
+# Completed jobs kept in separate history (last 10)
+completed_jobs.insert(0, job)
+if len(completed_jobs) > MAX_COMPLETED_HISTORY:
+    completed_jobs.pop()
 ```
-**Critical**: Frontend filters active job from queue display to prevent duplicates (see `renderQueue()` in `script.js`)
+
+**Critical Queue Behavior**:
+- New items added to **front** of queue (visual: newest on top)
+- Processing takes from **end** of queue (execution: oldest first / FIFO)
+- Completed jobs stored separately with image paths for thumbnails
+- Queue renders in 3 sections: `queueList` (pending) → `activeJob` (generating) → `completedList` (finished)
+- `/api/queue` returns `{'queue': [...], 'active': {...}, 'completed': [...]}`
 
 ### API Response Structure
 All Flask endpoints return JSON with consistent patterns:
 - Queue operations: `{'success': bool, 'job_id': str}` or error message
 - Browse folder: `{'current_path': str, 'folders': [...], 'files': [...]}`
-- Queue status: `{'queue': [...], 'active': {...}}`
+- Queue status: `{'queue': [...], 'active': {...}, 'completed': [...]}`
 - Batch operations: `{'success': bool, 'moved': [...], 'errors': [...]}` or `{'deleted': [...], 'errors': [...]}`
+- Clear queue: `POST /api/queue/clear` - Removes all queued/completed items (preserves active)
 
 ### Custom Modal Pattern (No Browser Popups)
 ```javascript
@@ -111,6 +134,20 @@ pinokio.js, *.json   # Pinokio integration files
 ```
 
 ## UI Features
+
+### Tab Navigation
+- Click tab buttons to switch between Single Generation, Batch Generation, and Image Browser
+- JavaScript `switchTab()` toggles `.active` class on buttons and content sections
+- Tab state managed by `data-tab` attributes matching section IDs
+
+### Queue Display
+- **Clear Queue Button**: Trash icon in queue header clears all queued/completed items
+- **Three-Section Layout**:
+  1. Queued items at top (newest first)
+  2. Active/generating item in middle
+  3. Completed items at bottom (with image thumbnails)
+- **Completed Items**: Show thumbnail images, click to navigate to Image Browser tab
+- Queue auto-refreshes every 1 second via polling
 
 ### Folder Browser System
 - Breadcrumb navigation with clickable path segments
