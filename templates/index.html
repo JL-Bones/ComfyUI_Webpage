@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ComfyUI Web Interface</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Collapsible Queue Sidebar -->
+        <aside class="queue-sidebar" id="queueSidebar">
+            <div class="queue-header">
+                <h2>Queue</h2>
+                <button class="toggle-queue" id="toggleQueue" title="Toggle Queue">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="15 18 9 12 15 6"></polyline>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="queue-content">
+                <div class="active-job" id="activeJob">
+                    <!-- Active job will be displayed here -->
+                </div>
+                
+                <div class="queue-list" id="queueList">
+                    <!-- Queue items will be displayed here -->
+                </div>
+                
+                <div class="queue-empty" id="queueEmpty">
+                    <p>Queue is empty</p>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="app-header">
+                <h1>ComfyUI Imaginer</h1>
+            </header>
+
+            <div class="content-wrapper">
+                <!-- Generation Form -->
+                <section class="generation-panel">
+                    <div class="form-group">
+                        <label for="prompt">Prompt</label>
+                        <textarea 
+                            id="prompt" 
+                            rows="4" 
+                            placeholder="Enter your prompt here..."
+                            class="form-control"
+                        ></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="negativePrompt">Negative Prompt</label>
+                        <textarea 
+                            id="negativePrompt" 
+                            rows="2" 
+                            placeholder="Enter negative prompt (optional)..."
+                            class="form-control"
+                        ></textarea>
+                    </div>
+
+                    <div class="parameters-grid">
+                        <div class="form-group">
+                            <label for="width">Width</label>
+                            <input 
+                                type="number" 
+                                id="width" 
+                                value="512" 
+                                min="64" 
+                                max="2048" 
+                                step="64"
+                                class="form-control"
+                            >
+                        </div>
+
+                        <div class="form-group">
+                            <label for="height">Height</label>
+                            <input 
+                                type="number" 
+                                id="height" 
+                                value="1024" 
+                                min="64" 
+                                max="2048" 
+                                step="64"
+                                class="form-control"
+                            >
+                        </div>
+
+                        <div class="form-group">
+                            <label for="steps">Steps</label>
+                            <input 
+                                type="number" 
+                                id="steps" 
+                                value="4" 
+                                min="1" 
+                                max="100"
+                                class="form-control"
+                            >
+                        </div>
+
+                        <div class="form-group">
+                            <label for="seed">Seed (optional)</label>
+                            <input 
+                                type="number" 
+                                id="seed" 
+                                placeholder="Random"
+                                class="form-control"
+                            >
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary btn-large" id="generateBtn">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                        </svg>
+                        Generate
+                    </button>
+                </section>
+
+                <!-- Image Gallery -->
+                <section class="gallery-panel">
+                    <div class="gallery-header">
+                        <h2>Generated Images</h2>
+                    </div>
+                    
+                    <div class="gallery-grid" id="galleryGrid">
+                        <!-- Images will be loaded here -->
+                    </div>
+                    
+                    <div class="gallery-empty" id="galleryEmpty">
+                        <p>No images generated yet</p>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Image Detail Modal -->
+    <div class="modal" id="imageModal">
+        <div class="modal-overlay" id="imageOverlay"></div>
+        <div class="modal-content image-detail-content">
+            <button class="modal-close" id="closeImageBtn">×</button>
+            
+            <div class="image-detail">
+                <button class="image-nav prev" id="imagePrev">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="15 18 9 12 15 6"></polyline>
+                    </svg>
+                </button>
+                
+                <div class="image-detail-center">
+                    <img id="detailImage" alt="Generated Image">
+                    <span class="image-counter" id="imageCounter">0 / 0</span>
+                    <div class="image-metadata" id="imageMetadata">
+                        <!-- Metadata will be displayed here -->
+                    </div>
+                </div>
+                
+                <button class="image-nav next" id="imageNext">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="9 18 15 12 9 6"></polyline>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

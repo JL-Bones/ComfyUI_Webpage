@@ -1,0 +1,29 @@
+{
+  "run": [
+    {
+      "method": "shell.run",
+      "params": {
+        "message": "python -m venv venv"
+      }
+    },
+    {
+      "method": "shell.run",
+      "params": {
+        "venv": "venv",
+        "message": "pip install flask"
+      }
+    },
+    {
+      "method": "fs.link",
+      "params": {
+        "venv": "venv"
+      }
+    },
+    {
+      "method": "notify",
+      "params": {
+        "html": "Installation complete! Make sure ComfyUI is running on http://127.0.0.1:8188 before starting the web interface."
+      }
+    }
+  ]
+}
