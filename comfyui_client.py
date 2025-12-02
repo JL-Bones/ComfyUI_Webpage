@@ -125,12 +125,12 @@ class ComfyUIClient:
         self,
         workflow: Dict[str, Any],
         positive_prompt: str = "",
-        negative_prompt: str = "",
         width: Optional[int] = None,
         height: Optional[int] = None,
         steps: Optional[int] = None,
         cfg: Optional[float] = None,
-        seed: Optional[int] = None
+        seed: Optional[int] = None,
+        nsfw: bool = False
     ) -> Dict[str, Any]:
         """
         Modify workflow parameters
@@ -138,12 +138,12 @@ class ComfyUIClient:
         Args:
             workflow: The workflow dictionary
             positive_prompt: Positive prompt text
-            negative_prompt: Negative prompt text
             width: Image width
             height: Image height
             steps: Number of sampling steps
             cfg: CFG scale
             seed: Random seed (None for random)
+            nsfw: Enable NSFW mode
             
         Returns:
             Modified workflow
@@ -154,10 +154,6 @@ class ComfyUIClient:
         # Update positive prompt
         if positive_prompt:
             modified["75:6"]["inputs"]["text"] = positive_prompt
-        
-        # Update negative prompt
-        if negative_prompt:
-            modified["75:7"]["inputs"]["text"] = negative_prompt
         
         # Update dimensions
         if width is not None:
@@ -176,17 +172,20 @@ class ComfyUIClient:
             # Generate random seed
             modified["75:3"]["inputs"]["seed"] = random.randint(0, 2**32 - 1)
         
+        # Update NSFW setting
+        modified["75:89"]["inputs"]["value"] = nsfw
+        
         return modified
     
     def generate_image(
         self,
         positive_prompt: str,
-        negative_prompt: str = "",
         width: int = 512,
         height: int = 1024,
         steps: int = 4,
         cfg: float = 1.0,
         seed: Optional[int] = None,
+        nsfw: bool = False,
         output_path: Optional[str] = None,
         wait: bool = True
     ) -> Optional[str]:
@@ -195,12 +194,12 @@ class ComfyUIClient:
         
         Args:
             positive_prompt: Positive prompt text
-            negative_prompt: Negative prompt text
             width: Image width
             height: Image height
             steps: Number of sampling steps
             cfg: CFG scale
             seed: Random seed (None for random)
+            nsfw: Enable NSFW mode
             output_path: Path to save the image (None to not save)
             wait: Whether to wait for completion
             
@@ -212,12 +211,12 @@ class ComfyUIClient:
         modified_workflow = self.modify_workflow(
             workflow,
             positive_prompt=positive_prompt,
-            negative_prompt=negative_prompt,
             width=width,
             height=height,
             steps=steps,
             cfg=cfg,
-            seed=seed
+            seed=seed,
+            nsfw=nsfw
         )
         
         # Queue the prompt
@@ -265,7 +264,6 @@ def main():
     # Generate an image
     client.generate_image(
         positive_prompt="a beautiful landscape with mountains and a lake at sunset",
-        negative_prompt="blurry, low quality",
         width=512,
         height=1024,
         steps=4,

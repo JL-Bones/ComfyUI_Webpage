@@ -1,73 +1,177 @@
-# ComfyUI Workflow Client
+# ComfyUI Web Interface
 
-Python client for interacting with the ComfyUI Imaginer workflow.
+Flask-based web UI for ComfyUI image generation with queue management, real-time updates, and metadata tracking.
 
-## Setup
+## Features
 
-1. Make sure ComfyUI is running on `http://127.0.0.1:8188`
-2. No additional dependencies required (uses standard library only)
+- 🎨 Clean, dark-themed web interface
+- 📋 Queue management system with real-time updates
+- 🖼️ Image gallery with fullscreen viewer
+- 📁 Hierarchical folder management (browse, create, move, delete)
+- 🎯 Selection mode for batch operations (multi-select files/folders)
+- 💾 Metadata tracking (prompts, dimensions, seeds, NSFW mode, file prefix)
+- 🔄 Auto-hiding controls with mouse activity detection
+- ⌨️ Keyboard navigation (arrows, A/D keys, Escape)
+- 📱 Touch/swipe support for mobile devices
+- 🗑️ Delete images with confirmation dialog
+- 🎭 Custom modal dialogs (no browser popups)
+- 🔒 Git ignore and AI crawler protection
+
+## Requirements
+
+- Python 3.7+
+- Flask (`pip install flask`)
+- ComfyUI server running on `http://127.0.0.1:8188`
+
+## Quick Start
+
+1. **Install dependencies:**
+   ```powershell
+   pip install flask
+   ```
+
+2. **Make sure ComfyUI is running:**
+   - ComfyUI must be accessible at `http://127.0.0.1:8188`
+
+3. **Start the web server:**
+   ```powershell
+   python app.py
+   ```
+
+4. **Open in browser:**
+   - Navigate to `http://localhost:4879`
 
 ## Usage
 
-### Basic Example
+### Generate Images
 
-```python
-from comfyui_client import ComfyUIClient
+1. Enter your prompt in the text area
+2. Adjust parameters:
+   - **Width/Height**: Image dimensions (default: 512×1024)
+   - **Steps**: Sampling steps (default: 4)
+   - **Seed**: Random seed (leave empty for random)
+   - **NSFW**: Toggle NSFW mode (button changes color when active)
+   - **File Prefix**: Custom filename prefix (default: "comfyui")
+   - **Subfolder**: Target folder for output (optional)
+3. Click "Generate" to add to queue
+4. Images appear in the folder browser when complete
 
-# Initialize client
-client = ComfyUIClient(server_address="127.0.0.1:8188")
+### View Images
 
-# Generate an image
-client.generate_image(
-    positive_prompt="a beautiful landscape with mountains",
-    negative_prompt="blurry, low quality",
-    width=512,
-    height=1024,
-    output_path="output.png"
-)
-```
+- Click any image to open detail view
+- Use arrow buttons or keyboard (←/→/A/D) to navigate
+- Click fullscreen button for immersive viewing
+- Controls auto-hide after 2 seconds in fullscreen
+- Click "Import" to load image parameters back into form
+- Click "Delete Image" to remove image (with confirmation)
 
-### Advanced Usage
+### Manage Folders
 
-```python
-# Load and modify workflow manually
-workflow = client.load_workflow("Imaginer.json")
-modified = client.modify_workflow(
-    workflow,
-    positive_prompt="your prompt here",
-    steps=8,
-    cfg=1.5,
-    seed=12345
-)
+- **Browse**: Navigate folders using breadcrumb navigation or folder icons
+- **Create**: Click "Create Folder" to make new subfolders
+- **Select Mode**: Click "Select" to enable multi-select with checkboxes
+  - Select multiple files/folders
+  - Click "Move" to relocate selected items to another folder
+  - Click "Delete" to remove selected items (empty folders only)
+- **Set Output**: Click "Set Output Folder" to change current folder to generation target
+- Files automatically increment (e.g., prefix0000.png, prefix0001.png)
+- Duplicate names get (1), (2) suffixes on move operations
 
-# Queue the prompt
-response = client.queue_prompt(modified)
-prompt_id = response['prompt_id']
+### Queue Management
 
-# Wait for completion
-history = client.wait_for_completion(prompt_id)
-```
+- View active generation and queued jobs in left sidebar
+- Cancel queued jobs with the ✕ button
+- Queue processes one image at a time
+- Real-time status updates every second
 
-## Available Parameters
+## Parameters
 
 - `positive_prompt`: Main prompt text
-- `negative_prompt`: Negative prompt text
-- `width`: Image width (default: 512)
-- `height`: Image height (default: 1024)
-- `steps`: Sampling steps (default: 4)
-- `cfg`: CFG scale (default: 1.0)
-- `seed`: Random seed (None for random)
+- `width`: Image width (64-2048, step 64)
+- `height`: Image height (64-2048, step 64)  
+- `steps`: Sampling steps (1-100, default 4)
+- `seed`: Random seed (optional, auto-generated if empty)
+- `nsfw`: Enable NSFW mode (boolean)
+- `file_prefix`: Custom filename prefix (default: "comfyui")
+- `subfolder`: Target subfolder path (optional)
 
-## Files
+## Project Structure
 
-- `comfyui_client.py`: Main client library
-- `example.py`: Example usage scripts
-- `Imaginer.json`: ComfyUI workflow definition
-
-## Running Examples
-
-```powershell
-python example.py
+```
+├── app.py                 # Flask backend with queue processor
+├── comfyui_client.py      # Python ComfyUI API wrapper
+├── Imaginer.json          # ComfyUI workflow definition
+├── templates/
+│   └── index.html         # Single-page web interface
+├── static/
+│   ├── style.css          # Dark theme styling
+│   ├── script.js          # Frontend JavaScript (custom modals, folder browser)
+├── outputs/               # Generated images with subfolders (gitignored)
+│   ├── subfolder1/       # User-created folders
+│   │   └── *.png        # Images in subfolder
+│   ├── *.png             # Root-level images
+│   └── metadata.json     # Generation metadata with folder tracking
+└── requirements.txt       # Python dependencies
 ```
 
-This will run a basic example that generates an image. Uncomment other example functions in `example.py` to try different features.
+## API Endpoints
+
+- `GET /` - Main web interface
+- `POST /api/queue` - Add generation job to queue
+- `GET /api/queue` - Get queue status
+- `DELETE /api/queue/<job_id>` - Cancel queued job
+- `GET /api/browse` - Browse folder contents (files and subfolders)
+- `POST /api/folder` - Create new subfolder
+- `POST /api/move` - Move files/folders (with conflict resolution)
+- `POST /api/delete` - Delete files/empty folders
+- `GET /api/images/<image_id>` - Get specific image metadata
+- `GET /outputs/<path:filepath>` - Serve generated image from any subfolder
+
+## Pinokio Integration
+
+This project includes Pinokio integration files for easy package management:
+
+- `install.json` - Installs Python environment and Flask
+- `start.json` - Starts the web server
+- `update.json` - Updates Flask to latest version
+- `reset.json` - Removes virtual environment and outputs
+- `open.json` - Opens web interface in browser
+
+## Configuration
+
+### Change ComfyUI Server Address
+
+Edit both files:
+
+```python
+# app.py (line ~30)
+comfyui_client = ComfyUIClient(server_address="127.0.0.1:8188")
+
+# comfyui_client.py (line ~18)
+def __init__(self, server_address: str = "127.0.0.1:8188"):
+```
+
+### Change Web Server Port
+
+```python
+# app.py (last line)
+app.run(host='0.0.0.0', port=4879, debug=False, threaded=True)
+```
+
+## Development
+
+- **No hot reload** - Restart Flask server after Python changes
+- Frontend changes (HTML/CSS/JS) only need browser refresh
+- Queue processing runs in daemon thread
+- Uses only Python stdlib for ComfyUI client (no pip dependencies)
+- Flask is the only external dependency
+
+## Privacy
+
+- `outputs/` directory is gitignored
+- `robots.txt` blocks major AI crawlers (GPTBot, Claude-Web, etc.)
+- All metadata stored locally in `outputs/metadata.json`
+
+## License
+
+This project is open source and available for use and modification.

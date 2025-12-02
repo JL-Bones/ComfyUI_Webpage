@@ -29,6 +29,21 @@ active_generation = None
 comfyui_client = ComfyUIClient(server_address="127.0.0.1:8188")
 
 
+def get_next_filename(prefix: str, subfolder: str = "", extension: str = "png") -> tuple:
+    """Generate next available filename with incremental index"""
+    target_dir = OUTPUT_DIR / subfolder if subfolder else OUTPUT_DIR
+    target_dir.mkdir(parents=True, exist_ok=True)
+    
+    index = 0
+    while True:
+        filename = f"{prefix}{index:04d}.{extension}"
+        filepath = target_dir / filename
+        if not filepath.exists():
+            relative_path = filepath.relative_to(OUTPUT_DIR)
+            return str(relative_path), filepath
+        index += 1
+
+
 def load_metadata():
     """Load image metadata from file"""
     if METADATA_FILE.exists():
@@ -43,20 +58,58 @@ def save_metadata(metadata):
         json.dump(metadata, f, indent=2)
 
 
-def add_metadata_entry(image_path, prompt, negative_prompt, width, height, steps, seed):
+def get_unique_filename(target_path: Path) -> Path:
+    """Get unique filename by appending (1), (2), etc. if file exists"""
+    if not target_path.exists():
+        return target_path
+    
+    stem = target_path.stem
+    suffix = target_path.suffix
+    parent = target_path.parent
+    index = 1
+    
+    while True:
+        new_name = f"{stem} ({index}){suffix}"
+        new_path = parent / new_name
+        if not new_path.exists():
+            return new_path
+        index += 1
+
+
+def update_metadata_path(old_path: str, new_path: str):
+    """Update metadata when a file is moved"""
+    metadata = load_metadata()
+    for entry in metadata:
+        if entry.get('path') == old_path:
+            entry['path'] = new_path
+            entry['filename'] = os.path.basename(new_path)
+            break
+    save_metadata(metadata)
+
+
+def delete_metadata_entry(file_path: str):
+    """Remove metadata entry when file is deleted"""
+    metadata = load_metadata()
+    metadata = [entry for entry in metadata if entry.get('path') != file_path]
+    save_metadata(metadata)
+
+
+def add_metadata_entry(image_path, prompt, width, height, steps, seed, nsfw, file_prefix, subfolder):
     """Add a new metadata entry"""
     metadata = load_metadata()
     entry = {
         "id": str(uuid.uuid4()),
         "filename": os.path.basename(image_path),
         "path": str(image_path),
+        "subfolder": subfolder,
         "timestamp": datetime.now().isoformat(),
         "prompt": prompt,
-        "negative_prompt": negative_prompt,
         "width": width,
         "height": height,
         "steps": steps,
-        "seed": seed
+        "seed": seed,
+        "nsfw": nsfw,
+        "file_prefix": file_prefix
     }
     metadata.append(entry)
     save_metadata(metadata)
@@ -78,10 +131,10 @@ def process_queue():
         
         if job:
             try:
-                # Generate image
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                output_filename = f"comfyui_{timestamp}_{job['id'][:8]}.png"
-                output_path = OUTPUT_DIR / output_filename
+                # Generate image with auto-incrementing filename
+                file_prefix = job.get('file_prefix', 'comfyui')
+                subfolder = job.get('subfolder', '')
+                relative_path, output_path = get_next_filename(file_prefix, subfolder)
                 
                 # Get the seed (generate if not provided)
                 seed = job.get('seed')
@@ -91,12 +144,12 @@ def process_queue():
                 
                 comfyui_client.generate_image(
                     positive_prompt=job['prompt'],
-                    negative_prompt=job['negative_prompt'],
                     width=job['width'],
                     height=job['height'],
                     steps=job['steps'],
                     cfg=1.0,
                     seed=seed,
+                    nsfw=job['nsfw'],
                     output_path=str(output_path),
                     wait=True
                 )
@@ -105,17 +158,20 @@ def process_queue():
                 metadata_entry = add_metadata_entry(
                     str(output_path),
                     job['prompt'],
-                    job['negative_prompt'],
                     job['width'],
                     job['height'],
                     job['steps'],
-                    seed
+                    seed,
+                    job['nsfw'],
+                    file_prefix,
+                    subfolder
                 )
                 
                 job['status'] = 'completed'
                 job['output_path'] = str(output_path)
                 job['metadata_id'] = metadata_entry['id']
                 job['completed_at'] = datetime.now().isoformat()
+                job['refresh_folder'] = True
                 
             except Exception as e:
                 job['status'] = 'failed'
@@ -150,11 +206,13 @@ def add_to_queue():
     job = {
         'id': str(uuid.uuid4()),
         'prompt': data.get('prompt', ''),
-        'negative_prompt': data.get('negative_prompt', ''),
         'width': int(data.get('width', 512)),
         'height': int(data.get('height', 1024)),
         'steps': int(data.get('steps', 4)),
         'seed': data.get('seed'),
+        'nsfw': data.get('nsfw', False),
+        'file_prefix': data.get('file_prefix', 'comfyui'),
+        'subfolder': data.get('subfolder', ''),
         'status': 'queued',
         'added_at': datetime.now().isoformat()
     }
@@ -190,12 +248,159 @@ def cancel_job(job_id):
     return jsonify({'success': False, 'error': 'Job not found or already processing'}), 404
 
 
-@app.route('/api/images')
-def get_images():
-    """Get all generated images with metadata"""
+@app.route('/api/browse')
+def browse_folder():
+    """Browse files and folders in a directory"""
+    subfolder = request.args.get('path', '')
+    current_dir = OUTPUT_DIR / subfolder if subfolder else OUTPUT_DIR
+    
+    if not current_dir.exists() or not current_dir.is_dir():
+        return jsonify({'error': 'Invalid directory'}), 404
+    
+    # Get folders
+    folders = []
+    for item in current_dir.iterdir():
+        if item.is_dir():
+            rel_path = str(item.relative_to(OUTPUT_DIR))
+            folders.append({
+                'name': item.name,
+                'path': rel_path,
+                'type': 'folder'
+            })
+    
+    # Get files with metadata
     metadata = load_metadata()
-    # Reverse to show newest first
-    return jsonify(metadata[::-1])
+    files = []
+    for entry in metadata:
+        entry_path = Path(entry['path'])
+        if entry_path.parent == current_dir:
+            entry['type'] = 'file'
+            entry['relative_path'] = str(entry_path.relative_to(OUTPUT_DIR))
+            files.append(entry)
+    
+    # Sort: folders first, then files by timestamp (newest first)
+    folders.sort(key=lambda x: x['name'])
+    files.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+    
+    return jsonify({
+        'current_path': subfolder,
+        'folders': folders,
+        'files': files
+    })
+
+
+@app.route('/api/folder', methods=['POST'])
+def create_folder():
+    """Create a new folder"""
+    data = request.json
+    folder_name = data.get('name', '').strip()
+    parent_path = data.get('parent', '')
+    
+    if not folder_name:
+        return jsonify({'error': 'Folder name required'}), 400
+    
+    # Sanitize folder name
+    folder_name = "".join(c for c in folder_name if c.isalnum() or c in (' ', '-', '_'))
+    
+    target_dir = OUTPUT_DIR / parent_path / folder_name if parent_path else OUTPUT_DIR / folder_name
+    
+    if target_dir.exists():
+        return jsonify({'error': 'Folder already exists'}), 400
+    
+    try:
+        target_dir.mkdir(parents=True, exist_ok=False)
+        return jsonify({'success': True, 'path': str(target_dir.relative_to(OUTPUT_DIR))})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/move', methods=['POST'])
+def move_items():
+    """Move files and folders to a target directory"""
+    data = request.json
+    items = data.get('items', [])  # List of paths
+    target = data.get('target', '')  # Target folder path
+    
+    target_dir = OUTPUT_DIR / target if target else OUTPUT_DIR
+    
+    if not target_dir.exists():
+        return jsonify({'error': 'Target directory does not exist'}), 400
+    
+    moved = []
+    errors = []
+    
+    for item_path in items:
+        try:
+            source = OUTPUT_DIR / item_path
+            if not source.exists():
+                errors.append(f"{item_path}: Not found")
+                continue
+            
+            # Determine target path with conflict resolution
+            target_path = target_dir / source.name
+            target_path = get_unique_filename(target_path)
+            
+            # Move the file/folder
+            import shutil
+            shutil.move(str(source), str(target_path))
+            
+            # Update metadata if it's a file
+            if source.is_file():
+                old_path = str(source)
+                new_path = str(target_path)
+                update_metadata_path(old_path, new_path)
+            
+            moved.append({
+                'from': item_path,
+                'to': str(target_path.relative_to(OUTPUT_DIR))
+            })
+            
+        except Exception as e:
+            errors.append(f"{item_path}: {str(e)}")
+    
+    return jsonify({
+        'success': len(errors) == 0,
+        'moved': moved,
+        'errors': errors
+    })
+
+
+@app.route('/api/delete', methods=['POST'])
+def delete_items():
+    """Delete files and empty folders"""
+    data = request.json
+    items = data.get('items', [])
+    
+    deleted = []
+    errors = []
+    
+    for item_path in items:
+        try:
+            target = OUTPUT_DIR / item_path
+            if not target.exists():
+                errors.append(f"{item_path}: Not found")
+                continue
+            
+            if target.is_file():
+                target.unlink()
+                delete_metadata_entry(str(target))
+                deleted.append(item_path)
+            elif target.is_dir():
+                # Only delete if empty
+                if not any(target.iterdir()):
+                    target.rmdir()
+                    deleted.append(item_path)
+                else:
+                    errors.append(f"{item_path}: Folder not empty")
+            
+        except Exception as e:
+            errors.append(f"{item_path}: {str(e)}")
+    
+    return jsonify({
+        'success': len(errors) == 0,
+        'deleted': deleted,
+        'errors': errors
+    })
 
 
 @app.route('/api/images/<image_id>')
@@ -208,11 +413,11 @@ def get_image_metadata(image_id):
     return jsonify({'error': 'Image not found'}), 404
 
 
-@app.route('/outputs/<filename>')
-def serve_image(filename):
-    """Serve generated images"""
-    file_path = OUTPUT_DIR / filename
-    if file_path.exists():
+@app.route('/outputs/<path:filepath>')
+def serve_image(filepath):
+    """Serve generated images from any subfolder"""
+    file_path = OUTPUT_DIR / filepath
+    if file_path.exists() and file_path.is_file():
         return send_file(file_path)
     return "Image not found", 404
 

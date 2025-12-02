@@ -14,7 +14,7 @@
   },
   "75:58": {
     "inputs": {
-      "width": 512,
+      "width": 1024,
       "height": 1024,
       "batch_size": 1
     },
@@ -56,8 +56,8 @@
     "inputs": {
       "text": "",
       "clip": [
-        "75:83",
-        1
+        "75:100",
+        0
       ]
     },
     "class_type": "CLIPTextEncode",
@@ -65,18 +65,9 @@
       "title": "CLIP Text Encode (Positive Prompt)"
     }
   },
-  "75:39": {
-    "inputs": {
-      "vae_name": "qwen_image_vae.safetensors"
-    },
-    "class_type": "VAELoader",
-    "_meta": {
-      "title": "Load VAE"
-    }
-  },
   "75:3": {
     "inputs": {
-      "seed": 784681995887210,
+      "seed": 930574714002883,
       "steps": 4,
       "cfg": 1,
       "sampler_name": "euler",
@@ -104,14 +95,75 @@
       "title": "KSampler"
     }
   },
-  "75:37": {
+  "75:7": {
     "inputs": {
-      "unet_name": "qwen_image_fp8_e4m3fn.safetensors",
-      "weight_dtype": "default"
+      "text": "",
+      "clip": [
+        "75:100",
+        0
+      ]
     },
-    "class_type": "UNETLoader",
+    "class_type": "CLIPTextEncode",
     "_meta": {
-      "title": "Load Diffusion Model"
+      "title": "CLIP Text Encode (Negative Prompt)"
+    }
+  },
+  "75:39": {
+    "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "75:73": {
+    "inputs": {
+      "lora_name": "Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors",
+      "strength_model": 1,
+      "model": [
+        "75:97",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoraLoaderModelOnly"
+    }
+  },
+  "75:83": {
+    "inputs": {
+      "lora_name": "Qwen_Snofs_1_2.safetensors",
+      "strength_model": 1,
+      "strength_clip": 1,
+      "model": [
+        "75:93",
+        0
+      ],
+      "clip": [
+        "75:96",
+        0
+      ]
+    },
+    "class_type": "LoraLoader",
+    "_meta": {
+      "title": "Load LoRA"
+    }
+  },
+  "75:93": {
+    "inputs": {
+      "A or B": [
+        "75:89",
+        0
+      ],
+      "in": [
+        "75:37",
+        0
+      ]
+    },
+    "class_type": "easy ab",
+    "_meta": {
+      "title": "A or B"
     }
   },
   "75:38": {
@@ -125,50 +177,79 @@
       "title": "Load CLIP"
     }
   },
-  "75:73": {
+  "75:37": {
     "inputs": {
-      "lora_name": "Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors",
-      "strength_model": 1,
-      "model": [
-        "75:83",
-        0
-      ]
+      "unet_name": "qwen_image_fp8_e4m3fn.safetensors",
+      "weight_dtype": "default"
     },
-    "class_type": "LoraLoaderModelOnly",
+    "class_type": "UNETLoader",
     "_meta": {
-      "title": "LoraLoaderModelOnly"
+      "title": "Load Diffusion Model"
     }
   },
-  "75:7": {
+  "75:97": {
     "inputs": {
-      "text": "",
-      "clip": [
+      "boolean": [
+        "75:89",
+        0
+      ],
+      "on_true": [
         "75:83",
+        0
+      ],
+      "on_false": [
+        "75:93",
         1
       ]
     },
-    "class_type": "CLIPTextEncode",
+    "class_type": "easy ifElse",
     "_meta": {
-      "title": "CLIP Text Encode (Negative Prompt)"
+      "title": "If else"
     }
   },
-  "75:83": {
+  "75:96": {
     "inputs": {
-      "lora_name": "Qwen_Snofs_1_2.safetensors",
-      "strength_model": 1,
-      "strength_clip": 1,
-      "model": [
-        "75:37",
+      "A or B": [
+        "75:89",
         0
       ],
-      "clip": [
+      "in": [
         "75:38",
         0
       ]
     },
-    "class_type": "LoraLoader",
+    "class_type": "easy ab",
     "_meta": {
-      "title": "Load LoRA"
+      "title": "A or B"
+    }
+  },
+  "75:100": {
+    "inputs": {
+      "boolean": [
+        "75:89",
+        0
+      ],
+      "on_true": [
+        "75:83",
+        1
+      ],
+      "on_false": [
+        "75:96",
+        1
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "75:89": {
+    "inputs": {
+      "value": false
+    },
+    "class_type": "easy boolean",
+    "_meta": {
+      "title": "NSFW"
     }
   }
 }

@@ -53,17 +53,22 @@
                         ></textarea>
                     </div>
 
-                    <div class="form-group">
-                        <label for="negativePrompt">Negative Prompt</label>
-                        <textarea 
-                            id="negativePrompt" 
-                            rows="2" 
-                            placeholder="Enter negative prompt (optional)..."
-                            class="form-control"
-                        ></textarea>
-                    </div>
-
                     <div class="parameters-grid">
+                        <div class="form-group">
+                            <label class="checkbox-label" id="nsfwToggle">
+                                <input 
+                                    type="checkbox" 
+                                    id="nsfw"
+                                    class="form-checkbox"
+                                    style="display: none;"
+                                >
+                                <svg class="checkbox-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                    <polyline points="20 6 9 17 4 12"></polyline>
+                                </svg>
+                                <span>NSFW Mode</span>
+                            </label>
+                        </div>
+
                         <div class="form-group">
                             <label for="width">Width</label>
                             <input 
@@ -104,11 +109,40 @@
 
                         <div class="form-group">
                             <label for="seed">Seed (optional)</label>
+                            <div class="input-with-clear">
+                                <input 
+                                    type="number" 
+                                    id="seed" 
+                                    placeholder="Random"
+                                    class="form-control"
+                                >
+                                <button type="button" class="clear-btn" id="clearSeedBtn" title="Clear seed">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="filePrefix">File Prefix (optional)</label>
                             <input 
-                                type="number" 
-                                id="seed" 
-                                placeholder="Random"
+                                type="text" 
+                                id="filePrefix" 
+                                placeholder="comfyui"
                                 class="form-control"
+                            >
+                        </div>
+
+                        <div class="form-group">
+                            <label for="subfolder">Output Folder (optional)</label>
+                            <input 
+                                type="text" 
+                                id="subfolder" 
+                                placeholder="Leave empty for root"
+                                class="form-control"
+                                readonly
                             >
                         </div>
                     </div>
@@ -124,15 +158,62 @@
                 <!-- Image Gallery -->
                 <section class="gallery-panel">
                     <div class="gallery-header">
-                        <h2>Generated Images</h2>
+                        <h2>Image Browser</h2>
+                        <div class="gallery-toolbar">
+                            <button class="btn btn-sm" id="newFolderBtn" title="New Folder">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                                    <line x1="12" y1="11" x2="12" y2="17"></line>
+                                    <line x1="9" y1="14" x2="15" y2="14"></line>
+                                </svg>
+                                <span>Create Folder</span>
+                            </button>
+                            <button class="btn btn-sm" id="setOutputFolderBtn" title="Set as Output Folder">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                    <polyline points="7 10 12 15 17 10"></polyline>
+                                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                                </svg>
+                                <span>Set Output Folder</span>
+                            </button>
+                            <button class="btn btn-sm" id="selectionModeBtn" title="Toggle Selection Mode">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M9 11l3 3L22 4"></path>
+                                    <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+                                </svg>
+                                <span>Select</span>
+                            </button>
+                            <button class="btn btn-sm" id="moveBtn" title="Move Selected" style="display:none;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="5 9 2 12 5 15"></polyline>
+                                    <polyline points="9 5 12 2 15 5"></polyline>
+                                    <polyline points="15 19 12 22 9 19"></polyline>
+                                    <polyline points="19 9 22 12 19 15"></polyline>
+                                    <line x1="2" y1="12" x2="22" y2="12"></line>
+                                    <line x1="12" y1="2" x2="12" y2="22"></line>
+                                </svg>
+                                <span>Move Selected</span>
+                            </button>
+                            <button class="btn btn-sm btn-danger" id="deleteBtn" title="Delete Selected" style="display:none;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="3 6 5 6 21 6"></polyline>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                </svg>
+                                <span>Delete Selected</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="breadcrumb" id="breadcrumb">
+                        <!-- Breadcrumb navigation -->
                     </div>
                     
                     <div class="gallery-grid" id="galleryGrid">
-                        <!-- Images will be loaded here -->
+                        <!-- Images and folders will be loaded here -->
                     </div>
                     
                     <div class="gallery-empty" id="galleryEmpty">
-                        <p>No images generated yet</p>
+                        <p>No items in this folder</p>
                     </div>
                 </section>
             </div>
@@ -155,6 +236,29 @@
                 <div class="image-detail-center">
                     <img id="detailImage" alt="Generated Image">
                     <span class="image-counter" id="imageCounter">0 / 0</span>
+                    <div class="image-actions">
+                        <button class="btn btn-primary import-btn" id="importBtn">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="7 10 12 15 17 10"></polyline>
+                                <line x1="12" y1="15" x2="12" y2="3"></line>
+                            </svg>
+                            Import to Form
+                        </button>
+                        <button class="btn btn-secondary" id="fullscreenBtn">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+                            </svg>
+                            Fullscreen
+                        </button>
+                        <button class="btn btn-danger" id="deleteImageBtn">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="3 6 5 6 21 6"></polyline>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                            </svg>
+                            Delete Image
+                        </button>
+                    </div>
                     <div class="image-metadata" id="imageMetadata">
                         <!-- Metadata will be displayed here -->
                     </div>
@@ -167,6 +271,58 @@
                 </button>
             </div>
         </div>
+    </div>
+
+    <!-- Custom Dialog Modal -->
+    <div class="custom-modal" id="customDialog" style="display: none;">
+        <div class="custom-modal-overlay"></div>
+        <div class="custom-modal-content">
+            <h3 id="dialogTitle"></h3>
+            <div id="dialogMessage"></div>
+            <div id="dialogInput" style="display: none;">
+                <input type="text" id="dialogInputField" class="form-control" placeholder="">
+            </div>
+            <div class="custom-modal-actions">
+                <button class="btn btn-secondary" id="dialogCancelBtn">Cancel</button>
+                <button class="btn btn-primary" id="dialogConfirmBtn">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Alert Modal -->
+    <div class="custom-modal" id="customAlert" style="display: none;">
+        <div class="custom-modal-overlay"></div>
+        <div class="custom-modal-content">
+            <h3 id="alertTitle">Notice</h3>
+            <div id="alertMessage"></div>
+            <div class="custom-modal-actions">
+                <button class="btn btn-primary" id="alertOkBtn">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fullscreen Image Viewer -->
+    <div class="fullscreen-viewer" id="fullscreenViewer">
+        <div class="fullscreen-controls" id="fullscreenControls">
+            <div class="fullscreen-counter" id="fullscreenCounter">0 / 0</div>
+            <button class="fullscreen-close" id="fullscreenClose">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+            <button class="fullscreen-nav fullscreen-prev" id="fullscreenPrev">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+            </button>
+            <button class="fullscreen-nav fullscreen-next" id="fullscreenNext">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+            </button>
+        </div>
+        <img id="fullscreenImage" alt="Fullscreen Image">
     </div>
 
     <script src="{{ url_for('static', filename='script.js') }}"></script>
