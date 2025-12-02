@@ -1037,6 +1037,204 @@ textarea.form-control {
     flex: 1;
 }
 
+/* Toast Notification System */
+.notification-container {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    pointer-events: none;
+    max-width: 400px;
+}
+
+.notification {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    pointer-events: auto;
+    animation: slideIn 0.3s ease-out;
+    cursor: pointer;
+    transition: all 0.2s;
+    min-width: 300px;
+    border-left: 3px solid var(--accent-primary);
+}
+
+.notification:hover {
+    transform: translateX(-4px);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.7);
+}
+
+.notification.closing {
+    animation: slideOut 0.3s ease-in forwards;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes slideOut {
+    from {
+        opacity: 1;
+        transform: translateX(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+}
+
+.notification-icon {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    margin-top: 0.125rem;
+}
+
+.notification-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.notification-title {
+    font-weight: 600;
+    font-size: 0.9375rem;
+    color: var(--text-primary);
+}
+
+.notification-message {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+.notification-close {
+    flex-shrink: 0;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.notification-close:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.notification.success {
+    border-left-color: var(--success);
+}
+
+.notification.success .notification-icon {
+    color: var(--success);
+}
+
+.notification.error {
+    border-left-color: var(--error);
+}
+
+.notification.error .notification-icon {
+    color: var(--error);
+}
+
+.notification.warning {
+    border-left-color: var(--warning);
+}
+
+.notification.warning .notification-icon {
+    color: var(--warning);
+}
+
+.notification.info {
+    border-left-color: var(--accent-primary);
+}
+
+.notification.info .notification-icon {
+    color: var(--accent-primary);
+}
+
+/* Batch Generation Styles */
+.input-method-tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.input-method-btn {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 0.875rem;
+}
+
+.input-method-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.input-method-btn.active {
+    background: var(--accent-primary);
+    color: white;
+    border-color: var(--accent-primary);
+}
+
+.input-method-content {
+    display: none;
+}
+
+.input-method-content.active {
+    display: block;
+}
+
+#batchPreview {
+    background: var(--bg-tertiary);
+    padding: 1rem;
+    border-radius: 8px;
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+}
+
+#batchPreview:empty::after {
+    content: 'Configure parameters and click "Preview Batch" to see generated prompts';
+    color: var(--text-muted);
+    text-align: center;
+    display: block;
+    padding: 2rem;
+}
+
+.batch-param-input {
+    font-family: 'Courier New', Courier, monospace;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .queue-sidebar {

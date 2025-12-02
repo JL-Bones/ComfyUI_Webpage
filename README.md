@@ -5,16 +5,20 @@ Flask-based web UI for ComfyUI image generation with tab-based interface, queue 
 ## Features
 
 - 🎨 Clean, dark-themed web interface with tab navigation
-- 📋 Queue management system with completed history (shows thumbnails)
+- 📋 Persistent queue system shared across all users/browsers (last 50 completed)
+- 🔄 Background processing with LIFO display / FIFO execution
 - 🖼️ Image gallery with fullscreen viewer and keyboard/touch navigation
 - 📁 Hierarchical folder management (browse, create, move, delete)
 - 🎯 Selection mode for batch operations (multi-select files/folders)
+- 📦 Batch generation with template-based parameter replacement
+- 📊 CSV/JSON import for batch parameters (manual, paste, or upload)
 - 💾 Metadata tracking (prompts, dimensions, seeds, NSFW mode, file prefix)
 - 🔄 Auto-hiding controls with mouse activity detection
 - ⌨️ Keyboard navigation (arrows, A/D keys, Escape)
 - 📱 Touch/swipe support for mobile devices
 - 🗑️ Delete images with confirmation dialog
-- 🎭 Custom modal dialogs (no browser popups)
+- 🎭 Custom modal dialogs for confirmations (no browser popups)
+- 🔔 Toast notification system (non-intrusive, auto-dismissing)
 - 🧹 Clear queue button with confirmation
 - 🔒 Git ignore and AI crawler protection
 
@@ -48,15 +52,15 @@ Flask-based web UI for ComfyUI image generation with tab-based interface, queue 
 
 The interface has three tabs:
 - **Single Generation**: Generate individual images with full parameter control
-- **Batch Generation**: (Coming soon) Generate multiple images with variations
+- **Batch Generation**: Generate multiple images with template-based parameter replacement
 - **Image Browser**: Browse, organize, and manage your generated images
 
-### Generate Images
+### Generate Images (Single Mode)
 
 1. Navigate to the **Single Generation** tab (default)
 2. Enter your prompt in the text area
 3. Adjust parameters:
-   - **Width/Height**: Image dimensions (default: 512×1024)
+   - **Width/Height**: Image dimensions (default: 1024×1024)
    - **Steps**: Sampling steps (default: 4)
    - **Seed**: Random seed (leave empty for random, ✕ button to clear)
    - **NSFW**: Toggle NSFW mode (button turns red when active)
@@ -65,6 +69,65 @@ The interface has three tabs:
 4. Click "Generate" to add to queue
 5. Watch progress in the left sidebar queue panel
 6. Completed items show thumbnail images - click to jump to Image Browser
+
+### Batch Generation
+
+Generate multiple images with parameter variations using templates:
+
+**1. Create a Template Prompt**
+- Use `[parameter_name]` syntax for values to be replaced
+- Example: `"A girl in a [dress_color] dress with [accessory]"`
+
+**2. Choose Input Method**
+
+Three ways to provide parameter values:
+
+**Manual Entry:**
+1. Click "Parse Template Parameters" button
+2. Input fields appear for each detected parameter
+3. Enter comma-separated values (one per image)
+4. Example: For 3 images with `[dress_color]` parameter:
+   - Enter: `red, blue, green`
+
+**Paste Data:**
+- Paste CSV or JSON directly into text area
+- CSV format:
+  ```csv
+  dress_color,accessory
+  red,hat
+  blue,scarf
+  green,sunglasses
+  ```
+- JSON format:
+  ```json
+  [
+    {"dress_color": "red", "accessory": "hat"},
+    {"dress_color": "blue", "accessory": "scarf"}
+  ]
+  ```
+
+**Upload File:**
+- Upload `.csv` or `.json` file
+- Must have column headers matching your parameter names
+- See `example_batch.csv` and `example_batch.json` for format
+
+**3. Configure Shared Parameters**
+- Width, Height, Steps apply to all images (default: 1024×1024, 4 steps)
+- Seed (optional) - Same seed for all images or leave empty for random per image
+- File Prefix (default: "batch")
+- NSFW mode toggle
+- Output folder (optional)
+
+**4. Preview and Generate**
+- Click "Preview Batch" to see all generated prompts before running
+- Shows each prompt with parameters replaced
+- Click "Generate Batch" to open confirmation dialog
+- **Confirmation dialog allows you to:**
+  - Review total image count
+  - Modify file prefix before generation
+  - Change output folder before generation
+  - Values auto-filled from batch form
+- All images process through the queue system
 
 ### View Images
 
@@ -102,7 +165,9 @@ The interface has three tabs:
 - Click completed thumbnails to navigate to image in browser
 - Queue processes oldest first (FIFO) but displays newest on top
 - Real-time status updates every second
-- Keeps last 10 completed jobs with images
+- **Persistent queue** - Survives server restarts
+- **Shared across all users** - All browsers see same queue
+- Keeps last 50 completed jobs with images
 
 ## Parameters
 
@@ -137,7 +202,8 @@ The interface has three tabs:
 ## API Endpoints
 
 - `GET /` - Main web interface with tabs
-- `POST /api/queue` - Add generation job to queue (adds to front)
+- `POST /api/queue` - Add single generation job to queue (adds to front)
+- `POST /api/queue/batch` - Add multiple jobs from template and parameter data
 - `GET /api/queue` - Get queue status (returns queued, active, completed)
 - `DELETE /api/queue/<job_id>` - Cancel specific queued job
 - `POST /api/queue/clear` - Clear all queued and completed items (preserves active)

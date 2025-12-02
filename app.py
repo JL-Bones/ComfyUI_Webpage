@@ -19,11 +19,12 @@ app.config['SECRET_KEY'] = 'comfyui-webui-secret-key'
 OUTPUT_DIR = Path("outputs")
 OUTPUT_DIR.mkdir(exist_ok=True)
 METADATA_FILE = OUTPUT_DIR / "metadata.json"
+QUEUE_FILE = OUTPUT_DIR / "queue_state.json"
 
 # Global queue and status
 generation_queue = []
-completed_jobs = []  # Keep last 10 completed jobs
-MAX_COMPLETED_HISTORY = 10
+completed_jobs = []  # Keep last 50 completed jobs
+MAX_COMPLETED_HISTORY = 50
 queue_lock = threading.Lock()
 active_generation = None
 
@@ -96,6 +97,33 @@ def delete_metadata_entry(file_path: str):
     save_metadata(metadata)
 
 
+def load_queue_state():
+    """Load queue state from file"""
+    if QUEUE_FILE.exists():
+        try:
+            with open(QUEUE_FILE, 'r') as f:
+                data = json.load(f)
+                return data.get('queue', []), data.get('completed', []), data.get('active')
+        except Exception as e:
+            print(f"Error loading queue state: {e}")
+    return [], [], None
+
+
+def save_queue_state():
+    """Save queue state to file"""
+    try:
+        with queue_lock:
+            data = {
+                'queue': generation_queue.copy(),
+                'active': active_generation.copy() if active_generation else None,
+                'completed': completed_jobs.copy()
+            }
+        with open(QUEUE_FILE, 'w') as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        print(f"Error saving queue state: {e}")
+
+
 def add_metadata_entry(image_path, prompt, width, height, steps, seed, nsfw, file_prefix, subfolder):
     """Add a new metadata entry"""
     metadata = load_metadata()
@@ -120,7 +148,7 @@ def add_metadata_entry(image_path, prompt, width, height, steps, seed, nsfw, fil
 
 def process_queue():
     """Background thread to process the generation queue"""
-    global active_generation
+    global active_generation, generation_queue, completed_jobs
     
     while True:
         job = None
@@ -192,9 +220,20 @@ def process_queue():
                         completed_jobs.pop()
                     
                     active_generation = None
+                
+                # Save queue state after job completes
+                save_queue_state()
         else:
             time.sleep(0.5)
 
+
+# Load persisted queue state before starting queue processor
+print("Loading queue state...")
+loaded_queue, loaded_completed, loaded_active = load_queue_state()
+generation_queue = loaded_queue
+completed_jobs = loaded_completed
+# Don't restore active generation on startup - it should start fresh
+print(f"Loaded {len(generation_queue)} queued jobs and {len(completed_jobs)} completed jobs")
 
 # Start queue processor thread
 queue_thread = threading.Thread(target=process_queue, daemon=True)
@@ -215,7 +254,7 @@ def add_to_queue():
     job = {
         'id': str(uuid.uuid4()),
         'prompt': data.get('prompt', ''),
-        'width': int(data.get('width', 512)),
+        'width': int(data.get('width', 1024)),
         'height': int(data.get('height', 1024)),
         'steps': int(data.get('steps', 4)),
         'seed': data.get('seed'),
@@ -229,7 +268,51 @@ def add_to_queue():
     with queue_lock:
         generation_queue.insert(0, job)  # Add to front of queue
     
+    save_queue_state()
     return jsonify({'success': True, 'job_id': job['id']})
+
+
+@app.route('/api/queue/batch', methods=['POST'])
+def add_batch_to_queue():
+    """Add multiple generation jobs from batch template"""
+    data = request.json
+    template = data.get('template', '')
+    batch_data = data.get('batch_data', [])
+    shared_params = data.get('shared_params', {})
+    
+    if not template or not batch_data:
+        return jsonify({'error': 'Template and batch data required'}), 400
+    
+    jobs_queued = 0
+    
+    # Generate prompts and queue each job
+    for params in batch_data:
+        # Replace parameters in template
+        prompt = template
+        for key, value in params.items():
+            prompt = prompt.replace(f'[{key}]', str(value))
+        
+        job = {
+            'id': str(uuid.uuid4()),
+            'prompt': prompt,
+            'width': int(shared_params.get('width', 1024)),
+            'height': int(shared_params.get('height', 1024)),
+            'steps': int(shared_params.get('steps', 4)),
+            'seed': shared_params.get('seed'),  # Use shared seed or None for random per image
+            'nsfw': shared_params.get('nsfw', False),
+            'file_prefix': shared_params.get('file_prefix', 'batch'),
+            'subfolder': shared_params.get('subfolder', ''),
+            'status': 'queued',
+            'added_at': datetime.now().isoformat()
+        }
+        
+        with queue_lock:
+            generation_queue.insert(0, job)  # Add to front of queue
+        
+        jobs_queued += 1
+    
+    save_queue_state()
+    return jsonify({'success': True, 'queued': jobs_queued})
 
 
 @app.route('/api/queue', methods=['GET'])
@@ -254,6 +337,7 @@ def cancel_job(job_id):
         for i, job in enumerate(generation_queue):
             if job['id'] == job_id and job['status'] == 'queued':
                 generation_queue.pop(i)
+                save_queue_state()
                 return jsonify({'success': True})
     
     return jsonify({'success': False, 'error': 'Job not found or already processing'}), 404
@@ -266,6 +350,7 @@ def clear_queue():
         generation_queue.clear()
         completed_jobs.clear()
     
+    save_queue_state()
     return jsonify({'success': True})
 
 

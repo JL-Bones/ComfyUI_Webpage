@@ -1,0 +1,22 @@
+[
+  {
+    "dress_color": "red",
+    "accessory": "hat"
+  },
+  {
+    "dress_color": "blue",
+    "accessory": "scarf"
+  },
+  {
+    "dress_color": "green",
+    "accessory": "sunglasses"
+  },
+  {
+    "dress_color": "purple",
+    "accessory": "necklace"
+  },
+  {
+    "dress_color": "yellow",
+    "accessory": "bracelet"
+  }
+]

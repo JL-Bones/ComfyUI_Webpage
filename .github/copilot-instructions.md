@@ -21,7 +21,7 @@ User Input → Flask Queue (LIFO display) → Background Thread (FIFO processing
 ### Tab System
 Three main tabs switch content visibility:
 - **Single Generation**: Image generation form (active by default)
-- **Batch Generation**: Placeholder for future batch operations
+- **Batch Generation**: Template-based generation with [parameter] replacement, supports CSV/JSON import
 - **Image Browser**: Folder navigation and image gallery
 
 ## Critical Workflow Nodes (Imaginer.json)
@@ -71,7 +71,7 @@ with queue_lock:
         active_generation = job
         job['status'] = 'generating'
 
-# Completed jobs kept in separate history (last 10)
+# Completed jobs kept in separate history (last 50)
 completed_jobs.insert(0, job)
 if len(completed_jobs) > MAX_COMPLETED_HISTORY:
     completed_jobs.pop()
@@ -83,6 +83,9 @@ if len(completed_jobs) > MAX_COMPLETED_HISTORY:
 - Completed jobs stored separately with image paths for thumbnails
 - Queue renders in 3 sections: `queueList` (pending) → `activeJob` (generating) → `completedList` (finished)
 - `/api/queue` returns `{'queue': [...], 'active': {...}, 'completed': [...]}`
+- **Persistent storage** in `outputs/queue_state.json` - survives server restarts
+- **Shared across all users/browsers** - all sessions see same queue state
+- Auto-saves after every queue operation (add, cancel, complete, clear)
 
 ### API Response Structure
 All Flask endpoints return JSON with consistent patterns:
@@ -92,16 +95,26 @@ All Flask endpoints return JSON with consistent patterns:
 - Batch operations: `{'success': bool, 'moved': [...], 'errors': [...]}` or `{'deleted': [...], 'errors': [...]}`
 - Clear queue: `POST /api/queue/clear` - Removes all queued/completed items (preserves active)
 
-### Custom Modal Pattern (No Browser Popups)
+### Toast Notification & Modal Pattern
 ```javascript
-// All user dialogs use Promise-based custom modals
-await showAlert('Message', 'Title');           // Info/error messages
+// Toast notifications for non-blocking feedback (preferred)
+showNotification('Message', 'Title', 'success', 3000);  // Auto-dismiss after 3s
+showNotification('Error occurred', 'Error', 'error');    // 5s default for errors
+showNotification('Warning', 'Warning', 'warning');       // 5s default
+showNotification('Info', 'Info', 'info', 5000);          // Blue info style
+
+// Types: 'success' (green), 'error' (red), 'warning' (orange), 'info' (blue)
+// Notifications slide in from top-right, click to dismiss, auto-stack
+
+// Custom modal dialogs for user input/confirmation (blocking)
 const value = await showPrompt('Enter name');  // Text input
 const ok = await showConfirm('Are you sure?'); // Yes/No confirmation
 
-// Never use: alert(), prompt(), confirm()
-// Modal HTML in templates/index.html with IDs: customAlert, customDialog
-// Dark-themed to match UI with .custom-modal styles
+// Legacy showAlert() still works but now uses toast notifications
+await showAlert('Message');  // Maps to showNotification(..., 'info')
+
+// Never use: alert(), prompt(), confirm() - browser popups blocked
+// Modal HTML in templates/index.html with IDs: customDialog, notificationContainer
 ```
 
 ## Running & Testing
@@ -120,7 +133,8 @@ outputs/              # Generated images with subfolders (gitignored)
 ├── subfolder1/      # User-created folders
 │   ├── *.png       # Images in subfolder
 ├── *.png            # Root-level images
-└── metadata.json    # Flat array with 'subfolder' and 'path' fields
+├── metadata.json    # Flat array with 'subfolder' and 'path' fields
+└── queue_state.json # Persistent queue storage (queued, active, completed)
 
 static/
 ├── style.css        # Dark theme with custom modal styles
@@ -176,12 +190,27 @@ pinokio.js, *.json   # Pinokio integration files
 - **Import**: Click "Import" in image detail view
   - Loads all parameters (prompt, dimensions, steps, seed, NSFW, file prefix)
   - Updates NSFW toggle button state via `updateNSFWButton()`
-  - Automatically scrolls to form
+  - Switches to Single Generation tab automatically
+  - Shows success notification
   - Seed persists until manually cleared with ✕ button
 - **Delete**: Click "Delete Image" in viewer
   - Shows custom confirm dialog (not browser confirm)
   - Removes file via `/api/delete` endpoint
   - Updates metadata and refreshes folder view
+  - Shows success/error notification
+
+### Batch Generation System
+- **Template Syntax**: Use `[parameter_name]` for values to replace (e.g., "A [color] dog")
+- **Three Input Methods**:
+  1. **Manual**: Parse template → auto-generate input fields → enter comma-separated values
+  2. **Paste Data**: Paste CSV or JSON directly into textarea
+  3. **File Upload**: Upload `.csv` or `.json` file with matching parameter names
+- **CSV Format**: First row = headers (parameter names), subsequent rows = values
+- **JSON Format**: Array of objects with parameter names as keys
+- **Shared Parameters**: Width, Height, Steps, Seed, NSFW, File Prefix, Subfolder apply to all
+- **Confirmation Dialog**: Shows editable file prefix and subfolder before queueing
+- **Backend**: `/api/queue/batch` accepts `{template, batch_data, shared_params}`
+- **Parameter Replacement**: `replaceParameters()` uses regex to replace `[key]` with values
 
 ## Common Modifications
 
@@ -238,6 +267,8 @@ let touchStartX = 0;              // Touch start position
 let touchEndX = 0;                // Touch end position
 let mouseActivityTimer = null;    // Timer for auto-hiding controls
 let isFullscreenActive = false;   // Fullscreen state flag
+let currentInputMethod = 'manual';// Batch input method: manual/textarea/file
+let parsedBatchData = [];         // Parsed CSV/JSON data for batch generation
 ```
 
 ## Pinokio Integration

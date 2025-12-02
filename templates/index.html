@@ -74,12 +74,12 @@
                         </div>
 
                         <div class="parameters-grid">
-                            <div class="form-group">
-                                <label for="width">Width</label>
+                        <div class="form-group">
+                            <label for="width">Width</label>
                             <input 
                                 type="number" 
                                 id="width" 
-                                value="512" 
+                                value="1024" 
                                 min="64" 
                                 max="2048" 
                                 step="64"
@@ -110,9 +110,7 @@
                                 max="100"
                                 class="form-control"
                             >
-                        </div>
-
-                        <div class="form-group">
+                        </div>                        <div class="form-group">
                             <label for="seed">Seed (optional)</label>
                             <div class="input-with-clear">
                                 <input 
@@ -180,7 +178,195 @@
                 <!-- Batch Generation Tab -->
                 <section class="tab-content" id="batchTab">
                     <div class="generation-panel">
-                        <p style="text-align: center; color: var(--text-muted); padding: 4rem 2rem;">Batch generation coming soon...</p>
+                        <div class="form-group">
+                            <label for="batchPromptTemplate">Prompt Template</label>
+                            <textarea 
+                                id="batchPromptTemplate" 
+                                rows="4" 
+                                placeholder="Enter prompt with [parameters] in brackets, e.g., A girl in a [dress_color] dress with [accessory]"
+                                class="form-control"
+                            ></textarea>
+                            <small style="color: var(--text-muted); display: block; margin-top: 0.5rem;">
+                                Use [parameter_name] for values to be replaced. Example: "A [animal] in a [location]"
+                            </small>
+                        </div>
+
+                        <div class="parameters-grid">
+                            <div class="form-group">
+                                <label for="batchWidth">Width</label>
+                                <input 
+                                    type="number" 
+                                    id="batchWidth" 
+                                    value="1024" 
+                                    min="64" 
+                                    max="2048" 
+                                    step="64"
+                                    class="form-control"
+                                >
+                            </div>
+
+                            <div class="form-group">
+                                <label for="batchHeight">Height</label>
+                                <input 
+                                    type="number" 
+                                    id="batchHeight" 
+                                    value="1024" 
+                                    min="64" 
+                                    max="2048" 
+                                    step="64"
+                                    class="form-control"
+                                >
+                            </div>
+
+                            <div class="form-group">
+                                <label for="batchSteps">Steps</label>
+                                <input 
+                                    type="number" 
+                                    id="batchSteps" 
+                                    value="4" 
+                                    min="1" 
+                                    max="100"
+                                    class="form-control"
+                                >
+                            </div>
+
+                            <div class="form-group">
+                                <label for="batchSeed">Seed (optional)</label>
+                                <div class="input-with-clear">
+                                    <input 
+                                        type="number" 
+                                        id="batchSeed" 
+                                        placeholder="Random"
+                                        class="form-control"
+                                    >
+                                    <button type="button" class="clear-btn" id="clearBatchSeedBtn" title="Clear seed">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="batchFilePrefix">File Prefix</label>
+                                <input 
+                                    type="text" 
+                                    id="batchFilePrefix" 
+                                    placeholder="batch"
+                                    value="batch"
+                                    class="form-control"
+                                >
+                            </div>
+
+                            <div class="form-group">
+                                <label for="batchSubfolder">Output Folder (optional)</label>
+                                <input 
+                                    type="text" 
+                                    id="batchSubfolder" 
+                                    placeholder="Leave empty for root"
+                                    class="form-control"
+                                    readonly
+                                >
+                            </div>
+
+                            <div class="form-group nsfw-group">
+                                <label>&nbsp;</label>
+                                <label class="checkbox-label" id="batchNsfwToggle">
+                                    <input 
+                                        type="checkbox" 
+                                        id="batchNsfw"
+                                        class="form-checkbox"
+                                        style="display: none;"
+                                    >
+                                    <svg class="checkbox-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                        <polyline points="20 6 9 17 4 12"></polyline>
+                                    </svg>
+                                    <span>NSFW Mode</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Data Input Methods -->
+                        <div class="form-group" style="margin-top: 2rem;">
+                            <label>Parameter Data Input</label>
+                            
+                            <!-- Tab buttons for input methods -->
+                            <div class="input-method-tabs" style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+                                <button class="btn btn-sm input-method-btn active" data-method="manual">Manual Entry</button>
+                                <button class="btn btn-sm input-method-btn" data-method="textarea">Paste Data</button>
+                                <button class="btn btn-sm input-method-btn" data-method="file">Upload File</button>
+                            </div>
+
+                            <!-- Manual Entry -->
+                            <div class="input-method-content active" id="manualEntry">
+                                <div class="form-group">
+                                    <label for="batchCount">Number of Images</label>
+                                    <input 
+                                        type="number" 
+                                        id="batchCount" 
+                                        value="3" 
+                                        min="1" 
+                                        max="100"
+                                        class="form-control"
+                                    >
+                                </div>
+                                <div id="manualParametersContainer">
+                                    <!-- Will be dynamically populated based on template -->
+                                </div>
+                                <button class="btn btn-secondary" id="parseTemplateBtn" style="margin-top: 1rem;">
+                                    Parse Template Parameters
+                                </button>
+                            </div>
+
+                            <!-- Paste Data -->
+                            <div class="input-method-content" id="textareaEntry" style="display: none;">
+                                <textarea 
+                                    id="batchDataText" 
+                                    rows="10" 
+                                    placeholder="Paste CSV or JSON data here&#10;&#10;CSV format:&#10;dress_color,accessory&#10;red,hat&#10;blue,scarf&#10;green,sunglasses&#10;&#10;JSON format:&#10;[&#10;  {&quot;dress_color&quot;: &quot;red&quot;, &quot;accessory&quot;: &quot;hat&quot;},&#10;  {&quot;dress_color&quot;: &quot;blue&quot;, &quot;accessory&quot;: &quot;scarf&quot;}&#10;]"
+                                    class="form-control"
+                                    style="font-family: monospace; font-size: 0.9rem;"
+                                ></textarea>
+                            </div>
+
+                            <!-- File Upload -->
+                            <div class="input-method-content" id="fileEntry" style="display: none;">
+                                <input 
+                                    type="file" 
+                                    id="batchDataFile" 
+                                    accept=".csv,.json,.txt"
+                                    class="form-control"
+                                >
+                                <small style="color: var(--text-muted); display: block; margin-top: 0.5rem;">
+                                    Accepts CSV or JSON files. CSV should have headers matching your parameter names.
+                                </small>
+                            </div>
+                        </div>
+
+                        <!-- Preview Section -->
+                        <div class="form-group" style="margin-top: 2rem;">
+                            <label>Batch Preview</label>
+                            <div id="batchPreview" style="background: var(--bg-secondary); padding: 1rem; border-radius: 8px; max-height: 300px; overflow-y: auto;">
+                                <p style="color: var(--text-muted); text-align: center;">Configure parameters and click "Preview Batch" to see generated prompts</p>
+                            </div>
+                        </div>
+
+                        <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                            <button class="btn btn-secondary btn-large" id="previewBatchBtn">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                </svg>
+                                Preview Batch
+                            </button>
+                            <button class="btn btn-primary btn-large" id="generateBatchBtn">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                                </svg>
+                                Generate Batch
+                            </button>
+                        </div>
                     </div>
                 </section>
 
@@ -355,6 +541,9 @@
         </div>
         <img id="fullscreenImage" alt="Fullscreen Image">
     </div>
+
+    <!-- Toast Notifications Container -->
+    <div class="notification-container" id="notificationContainer"></div>
 
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>

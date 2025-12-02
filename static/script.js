@@ -41,6 +41,7 @@ function initializeEventListeners() {
     
     // Clear seed button
     document.getElementById('clearSeedBtn').addEventListener('click', clearSeed);
+    document.getElementById('clearBatchSeedBtn').addEventListener('click', clearBatchSeed);
     
     // Fullscreen viewer
     document.getElementById('fullscreenBtn').addEventListener('click', openFullscreen);
@@ -129,23 +130,64 @@ function updateNSFWButton() {
     }
 }
 
-// Custom Dialog Functions
-function showAlert(message, title = 'Notice') {
-    return new Promise((resolve) => {
-        const modal = document.getElementById('customAlert');
-        document.getElementById('alertTitle').textContent = title;
-        document.getElementById('alertMessage').textContent = message;
-        modal.style.display = 'flex';
-        
-        const okBtn = document.getElementById('alertOkBtn');
-        const handler = () => {
-            modal.style.display = 'none';
-            okBtn.removeEventListener('click', handler);
-            resolve();
-        };
-        okBtn.addEventListener('click', handler);
+// Toast Notification System
+function showNotification(message, title = 'Notice', type = 'info', duration = 5000) {
+    const container = document.getElementById('notificationContainer');
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    
+    // Icon based on type
+    const icons = {
+        success: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>',
+        error: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>',
+        warning: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>',
+        info: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>'
+    };
+    
+    notification.innerHTML = `
+        <div class="notification-icon">${icons[type]}</div>
+        <div class="notification-content">
+            <div class="notification-title">${escapeHtml(title)}</div>
+            <div class="notification-message">${escapeHtml(message)}</div>
+        </div>
+        <button class="notification-close">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
+    `;
+    
+    container.appendChild(notification);
+    
+    // Close button handler
+    const closeBtn = notification.querySelector('.notification-close');
+    const close = () => {
+        notification.classList.add('closing');
+        setTimeout(() => notification.remove(), 300);
+    };
+    
+    closeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        close();
     });
+    
+    // Click notification to close
+    notification.addEventListener('click', close);
+    
+    // Auto-close after duration
+    if (duration > 0) {
+        setTimeout(close, duration);
+    }
 }
+
+// Legacy showAlert wrapper for compatibility
+function showAlert(message, title = 'Notice') {
+    showNotification(message, title, 'info', 5000);
+    return Promise.resolve();
+}
+
+// Custom Dialog Functions (keep for prompts and confirms)
 
 function showPrompt(message, defaultValue = '', title = 'Input Required') {
     return new Promise((resolve) => {
@@ -229,12 +271,13 @@ async function deleteCurrentImage() {
         if (result.success) {
             closeImageModal();
             browseFolder(currentPath);
+            showNotification('Image deleted successfully', 'Deleted', 'success', 3000);
         } else if (result.errors.length > 0) {
-            await showAlert('Error: ' + result.errors.join('\n'), 'Delete Error');
+            showNotification('Error: ' + result.errors.join('\n'), 'Delete Error', 'error');
         }
     } catch (error) {
         console.error('Error deleting image:', error);
-        await showAlert('Error deleting image', 'Error');
+        showNotification('Error deleting image', 'Error', 'error');
     }
 }
 
@@ -242,6 +285,11 @@ async function deleteCurrentImage() {
 function clearSeed() {
     document.getElementById('seed').value = '';
     document.getElementById('seed').focus();
+}
+
+function clearBatchSeed() {
+    document.getElementById('batchSeed').value = '';
+    document.getElementById('batchSeed').focus();
 }
 
 // Queue Management
@@ -261,12 +309,13 @@ async function clearQueue() {
         
         if (response.ok) {
             updateQueue();
+            showNotification('Queue cleared successfully', 'Queue Cleared', 'success', 3000);
         } else {
-            await showAlert('Failed to clear queue', 'Error');
+            showNotification('Failed to clear queue', 'Error', 'error');
         }
     } catch (error) {
         console.error('Error clearing queue:', error);
-        await showAlert('Error clearing queue', 'Error');
+        showNotification('Error clearing queue', 'Error', 'error');
     }
 }
 
@@ -399,7 +448,7 @@ async function generateImage() {
     const prompt = document.getElementById('prompt').value.trim();
     
     if (!prompt) {
-        await showAlert('Please enter a prompt');
+        showNotification('Please enter a prompt', 'Missing Prompt', 'warning');
         return;
     }
     
@@ -432,10 +481,11 @@ async function generateImage() {
             
             // Reload gallery after a delay to show new image
             setTimeout(() => browseFolder(currentPath), 3000);
+            showNotification('Image added to queue', 'Queued', 'success', 3000);
         }
     } catch (error) {
         console.error('Error queueing job:', error);
-        await showAlert('Error queueing job. Make sure ComfyUI is running.', 'Error');
+        showNotification('Error queueing job. Make sure ComfyUI is running.', 'Error', 'error');
     }
 }
 
@@ -613,18 +663,19 @@ async function createNewFolder() {
         const result = await response.json();
         if (result.success) {
             browseFolder(currentPath);
+            showNotification('Folder created successfully', 'Created', 'success', 3000);
         } else {
-            await showAlert('Error: ' + result.error, 'Error');
+            showNotification('Error: ' + result.error, 'Error', 'error');
         }
     } catch (error) {
         console.error('Error creating folder:', error);
-        await showAlert('Error creating folder', 'Error');
+        showNotification('Error creating folder', 'Error', 'error');
     }
 }
 
 async function setOutputFolder() {
     document.getElementById('subfolder').value = currentPath;
-    await showAlert(`Output folder set to: ${currentPath || 'Root'}`, 'Output Folder Set');
+    showNotification(`Output folder set to: ${currentPath || 'Root'}`, 'Output Folder Set', 'success', 3000);
 }
 
 async function moveSelectedItems() {
@@ -645,13 +696,15 @@ async function moveSelectedItems() {
         
         const result = await response.json();
         if (result.errors.length > 0) {
-            await showAlert('Errors occurred:\n' + result.errors.join('\n'), 'Move Errors');
+            showNotification('Errors occurred:\n' + result.errors.join('\n'), 'Move Errors', 'error');
+        } else if (result.moved.length > 0) {
+            showNotification(`Moved ${result.moved.length} item(s) successfully`, 'Moved', 'success', 3000);
         }
         
         browseFolder(currentPath);
     } catch (error) {
         console.error('Error moving items:', error);
-        await showAlert('Error moving items', 'Error');
+        showNotification('Error moving items', 'Error', 'error');
     }
 }
 
@@ -673,13 +726,15 @@ async function deleteSelectedItems() {
         
         const result = await response.json();
         if (result.errors.length > 0) {
-            await showAlert('Errors occurred:\n' + result.errors.join('\n'), 'Delete Errors');
+            showNotification('Errors occurred:\n' + result.errors.join('\n'), 'Delete Errors', 'error');
+        } else if (result.deleted.length > 0) {
+            showNotification(`Deleted ${result.deleted.length} item(s) successfully`, 'Deleted', 'success', 3000);
         }
         
         browseFolder(currentPath);
     } catch (error) {
         console.error('Error deleting items:', error);
-        await showAlert('Error deleting items', 'Error');
+        showNotification('Error deleting items', 'Error', 'error');
     }
 }
 
@@ -786,24 +841,16 @@ function importImageData() {
     // Close the modal
     closeImageModal();
     
+    // Switch to single generation tab
+    switchTab('single');
+    
     // Scroll to the form
-    document.querySelector('.generation-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    
-    // Show a brief visual feedback
-    const generateBtn = document.getElementById('generateBtn');
-    const originalText = generateBtn.innerHTML;
-    generateBtn.innerHTML = `
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="20 6 9 17 4 12"></polyline>
-        </svg>
-        Imported!
-    `;
-    generateBtn.style.background = 'var(--success)';
-    
     setTimeout(() => {
-        generateBtn.innerHTML = originalText;
-        generateBtn.style.background = '';
-    }, 2000);
+        document.querySelector('.generation-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+    
+    // Show notification
+    showNotification('Image parameters imported to form', 'Imported', 'success', 3000);
 }
 
 // Fullscreen Viewer
@@ -976,7 +1023,438 @@ function formatDate(isoString) {
     return date.toLocaleString();
 }
 
-// Auto-refresh gallery every 5 seconds
-setInterval(() => {
-    loadGallery();
-}, 5000);
+// Batch Generation Functions
+let currentInputMethod = 'manual';
+let parsedBatchData = [];
+
+function initializeBatchMode() {
+    // Input method tabs
+    document.querySelectorAll('.input-method-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const method = btn.getAttribute('data-method');
+            switchInputMethod(method);
+        });
+    });
+    
+    // Batch NSFW toggle
+    document.getElementById('batchNsfwToggle').addEventListener('click', toggleBatchNSFW);
+    
+    // Parse template button
+    document.getElementById('parseTemplateBtn').addEventListener('click', parseTemplateParameters);
+    
+    // Preview and generate buttons
+    document.getElementById('previewBatchBtn').addEventListener('click', previewBatch);
+    document.getElementById('generateBatchBtn').addEventListener('click', generateBatch);
+    
+    // File input change
+    document.getElementById('batchDataFile').addEventListener('change', handleFileUpload);
+}
+
+function switchInputMethod(method) {
+    currentInputMethod = method;
+    
+    // Update button states
+    document.querySelectorAll('.input-method-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.getAttribute('data-method') === method) {
+            btn.classList.add('active');
+        }
+    });
+    
+    // Update content visibility
+    document.querySelectorAll('.input-method-content').forEach(content => {
+        content.style.display = 'none';
+    });
+    
+    const contentIds = {
+        'manual': 'manualEntry',
+        'textarea': 'textareaEntry',
+        'file': 'fileEntry'
+    };
+    
+    document.getElementById(contentIds[method]).style.display = 'block';
+}
+
+function toggleBatchNSFW() {
+    const checkbox = document.getElementById('batchNsfw');
+    const toggle = document.getElementById('batchNsfwToggle');
+    
+    checkbox.checked = !checkbox.checked;
+    
+    if (checkbox.checked) {
+        toggle.classList.add('nsfw-active');
+    } else {
+        toggle.classList.remove('nsfw-active');
+    }
+}
+
+function extractParametersFromTemplate(template) {
+    // Extract all [parameter] placeholders from template
+    const regex = /\[([^\]]+)\]/g;
+    const parameters = new Set();
+    let match;
+    
+    while ((match = regex.exec(template)) !== null) {
+        parameters.add(match[1]);
+    }
+    
+    return Array.from(parameters);
+}
+
+function parseTemplateParameters() {
+    const template = document.getElementById('batchPromptTemplate').value.trim();
+    
+    if (!template) {
+        showAlert('Please enter a prompt template first');
+        return;
+    }
+    
+    const parameters = extractParametersFromTemplate(template);
+    
+    if (parameters.length === 0) {
+        showAlert('No parameters found. Use [parameter_name] syntax in your template.');
+        return;
+    }
+    
+    // Generate input fields for each parameter
+    const container = document.getElementById('manualParametersContainer');
+    const count = parseInt(document.getElementById('batchCount').value) || 3;
+    
+    let html = '<div style="margin-top: 1rem;">';
+    html += '<p style="color: var(--text-muted); margin-bottom: 1rem;">Enter values for each image (comma-separated):</p>';
+    
+    parameters.forEach(param => {
+        html += `
+            <div class="form-group">
+                <label for="param_${param}">${param}</label>
+                <input 
+                    type="text" 
+                    id="param_${param}" 
+                    placeholder="value1, value2, value3 (${count} values needed)"
+                    class="form-control batch-param-input"
+                    data-param="${param}"
+                >
+                <small style="color: var(--text-muted); display: block; margin-top: 0.25rem;">
+                    Enter ${count} comma-separated values
+                </small>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    container.innerHTML = html;
+    
+    showNotification(`Found ${parameters.length} parameter(s): ${parameters.join(', ')}`, 'Parameters Detected', 'success', 4000);
+}
+
+function replaceParameters(template, paramValues) {
+    let result = template;
+    for (const [key, value] of Object.entries(paramValues)) {
+        const regex = new RegExp(`\\[${key}\\]`, 'g');
+        result = result.replace(regex, value);
+    }
+    return result;
+}
+
+function parseManualData() {
+    const template = document.getElementById('batchPromptTemplate').value.trim();
+    const parameters = extractParametersFromTemplate(template);
+    const count = parseInt(document.getElementById('batchCount').value) || 3;
+    
+    if (!template || parameters.length === 0) {
+        throw new Error('Invalid template or no parameters found');
+    }
+    
+    // Collect values from input fields
+    const paramLists = {};
+    for (const param of parameters) {
+        const input = document.getElementById(`param_${param}`);
+        if (!input) {
+            throw new Error(`Input field for parameter "${param}" not found. Click "Parse Template Parameters" first.`);
+        }
+        
+        const values = input.value.split(',').map(v => v.trim()).filter(v => v);
+        if (values.length !== count) {
+            throw new Error(`Parameter "${param}" needs exactly ${count} values (found ${values.length})`);
+        }
+        paramLists[param] = values;
+    }
+    
+    // Generate batch data
+    const batchData = [];
+    for (let i = 0; i < count; i++) {
+        const paramValues = {};
+        for (const param of parameters) {
+            paramValues[param] = paramLists[param][i];
+        }
+        batchData.push(paramValues);
+    }
+    
+    return batchData;
+}
+
+function parseCSV(csvText) {
+    const lines = csvText.trim().split('\n').map(line => line.trim()).filter(line => line);
+    if (lines.length < 2) {
+        throw new Error('CSV must have at least a header row and one data row');
+    }
+    
+    const headers = lines[0].split(',').map(h => h.trim());
+    const data = [];
+    
+    for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(',').map(v => v.trim());
+        if (values.length !== headers.length) {
+            throw new Error(`Row ${i + 1} has ${values.length} values but expected ${headers.length}`);
+        }
+        
+        const row = {};
+        headers.forEach((header, index) => {
+            row[header] = values[index];
+        });
+        data.push(row);
+    }
+    
+    return data;
+}
+
+function parseTextareaData() {
+    const text = document.getElementById('batchDataText').value.trim();
+    
+    if (!text) {
+        throw new Error('No data entered');
+    }
+    
+    // Try JSON first
+    if (text.startsWith('[') || text.startsWith('{')) {
+        try {
+            const data = JSON.parse(text);
+            return Array.isArray(data) ? data : [data];
+        } catch (e) {
+            throw new Error('Invalid JSON format: ' + e.message);
+        }
+    }
+    
+    // Try CSV
+    return parseCSV(text);
+}
+
+async function handleFileUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    try {
+        const text = await file.text();
+        const extension = file.name.split('.').pop().toLowerCase();
+        
+        if (extension === 'json') {
+            const data = JSON.parse(text);
+            parsedBatchData = Array.isArray(data) ? data : [data];
+            showNotification(`Loaded ${parsedBatchData.length} entries from JSON file`, 'File Loaded', 'success', 3000);
+        } else if (extension === 'csv' || extension === 'txt') {
+            parsedBatchData = parseCSV(text);
+            showNotification(`Loaded ${parsedBatchData.length} entries from CSV file`, 'File Loaded', 'success', 3000);
+        } else {
+            throw new Error('Unsupported file type. Use .json or .csv files.');
+        }
+    } catch (error) {
+        showNotification('Error loading file: ' + error.message, 'File Error', 'error');
+        parsedBatchData = [];
+    }
+}
+
+async function previewBatch() {
+    try {
+        const template = document.getElementById('batchPromptTemplate').value.trim();
+        
+        if (!template) {
+            showNotification('Please enter a prompt template', 'Missing Template', 'warning');
+            return;
+        }
+        
+        // Get batch data based on input method
+        let batchData;
+        if (currentInputMethod === 'manual') {
+            batchData = parseManualData();
+        } else if (currentInputMethod === 'textarea') {
+            batchData = parseTextareaData();
+        } else if (currentInputMethod === 'file') {
+            if (parsedBatchData.length === 0) {
+                showNotification('Please upload a file first', 'No File', 'warning');
+                return;
+            }
+            batchData = parsedBatchData;
+        }
+        
+        // Generate preview
+        const preview = document.getElementById('batchPreview');
+        let html = '<div style="display: flex; flex-direction: column; gap: 0.75rem;">';
+        
+        batchData.forEach((params, index) => {
+            const prompt = replaceParameters(template, params);
+            html += `
+                <div style="padding: 0.75rem; background: var(--bg-primary); border-radius: 4px; border-left: 3px solid var(--primary);">
+                    <div style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.25rem;">Image ${index + 1}</div>
+                    <div style="color: var(--text-primary);">${escapeHtml(prompt)}</div>
+                </div>
+            `;
+        });
+        
+        html += '</div>';
+        html += `<div style="margin-top: 1rem; padding: 0.75rem; background: var(--accent); border-radius: 4px; text-align: center;">
+                    <strong>Total: ${batchData.length} images</strong>
+                 </div>`;
+        
+        preview.innerHTML = html;
+        showNotification('Batch preview generated successfully', 'Preview Ready', 'success', 3000);
+        
+    } catch (error) {
+        showNotification('Preview error: ' + error.message, 'Error', 'error');
+    }
+}
+
+function showBatchConfirmDialog(imageCount) {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('customDialog');
+        document.getElementById('dialogTitle').textContent = 'Confirm Batch Generation';
+        
+        // Get current values
+        const currentPrefix = document.getElementById('batchFilePrefix').value.trim() || 'batch';
+        const currentSubfolder = document.getElementById('batchSubfolder').value.trim();
+        
+        // Create custom dialog content
+        const dialogMessage = document.getElementById('dialogMessage');
+        dialogMessage.innerHTML = `
+            <p style="margin-bottom: 1rem;">Generate <strong>${imageCount}</strong> images with the following settings:</p>
+            <div class="form-group" style="margin-bottom: 1rem;">
+                <label for="dialogFilePrefix" style="display: block; margin-bottom: 0.5rem; font-weight: 500;">File Prefix</label>
+                <input 
+                    type="text" 
+                    id="dialogFilePrefix" 
+                    value="${currentPrefix}"
+                    placeholder="batch"
+                    class="form-control"
+                    style="width: 100%;"
+                >
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="dialogSubfolder" style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Output Folder</label>
+                <input 
+                    type="text" 
+                    id="dialogSubfolder" 
+                    value="${currentSubfolder}"
+                    placeholder="Leave empty for root"
+                    class="form-control"
+                    style="width: 100%;"
+                >
+                <small style="color: var(--text-muted); display: block; margin-top: 0.25rem;">Leave empty for root folder</small>
+            </div>
+        `;
+        
+        document.getElementById('dialogInput').style.display = 'none';
+        modal.style.display = 'flex';
+        
+        const confirmBtn = document.getElementById('dialogConfirmBtn');
+        const cancelBtn = document.getElementById('dialogCancelBtn');
+        
+        const cleanup = (result) => {
+            modal.style.display = 'none';
+            dialogMessage.innerHTML = '';
+            confirmBtn.removeEventListener('click', confirmHandler);
+            cancelBtn.removeEventListener('click', cancelHandler);
+            resolve(result);
+        };
+        
+        const confirmHandler = () => {
+            const file_prefix = document.getElementById('dialogFilePrefix').value.trim() || 'batch';
+            const subfolder = document.getElementById('dialogSubfolder').value.trim();
+            cleanup({ file_prefix, subfolder });
+        };
+        
+        const cancelHandler = () => cleanup(null);
+        
+        confirmBtn.addEventListener('click', confirmHandler);
+        cancelBtn.addEventListener('click', cancelHandler);
+        
+        // Focus first input
+        setTimeout(() => document.getElementById('dialogFilePrefix').focus(), 100);
+    });
+}
+
+async function generateBatch() {
+    try {
+        const template = document.getElementById('batchPromptTemplate').value.trim();
+        
+        if (!template) {
+            showNotification('Please enter a prompt template', 'Missing Template', 'warning');
+            return;
+        }
+        
+        // Get batch data based on input method
+        let batchData;
+        if (currentInputMethod === 'manual') {
+            batchData = parseManualData();
+        } else if (currentInputMethod === 'textarea') {
+            batchData = parseTextareaData();
+        } else if (currentInputMethod === 'file') {
+            if (parsedBatchData.length === 0) {
+                showNotification('Please upload a file first', 'No File', 'warning');
+                return;
+            }
+            batchData = parsedBatchData;
+        }
+        
+        if (batchData.length === 0) {
+            showNotification('No data to generate', 'No Data', 'warning');
+            return;
+        }
+        
+        // Show custom batch generation dialog with options
+        const batchOptions = await showBatchConfirmDialog(batchData.length);
+        
+        if (!batchOptions) return; // User cancelled
+        
+        // Collect shared parameters with user-confirmed values
+        const sharedParams = {
+            width: parseInt(document.getElementById('batchWidth').value),
+            height: parseInt(document.getElementById('batchHeight').value),
+            steps: parseInt(document.getElementById('batchSteps').value),
+            seed: document.getElementById('batchSeed').value ? parseInt(document.getElementById('batchSeed').value) : null,
+            nsfw: document.getElementById('batchNsfw').checked,
+            file_prefix: batchOptions.file_prefix,
+            subfolder: batchOptions.subfolder
+        };
+        
+        // Submit batch to backend
+        const response = await fetch('/api/queue/batch', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                template: template,
+                batch_data: batchData,
+                shared_params: sharedParams
+            })
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            showNotification(`Successfully queued ${result.queued} jobs!`, 'Batch Queued', 'success', 4000);
+            
+            // Update queue immediately
+            updateQueue();
+        } else {
+            const error = await response.json();
+            showNotification('Error: ' + (error.error || 'Failed to queue batch'), 'Error', 'error');
+        }
+        
+    } catch (error) {
+        showNotification('Batch generation error: ' + error.message, 'Error', 'error');
+    }
+}
+
+// Initialize batch mode when DOM loads
+document.addEventListener('DOMContentLoaded', function() {
+    initializeBatchMode();
+});
