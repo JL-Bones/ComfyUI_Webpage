@@ -41,6 +41,14 @@ with queue_lock:
 
 **Persistent State:** `outputs/queue_state.json` survives restarts, shared across all browsers/users.
 
+**Queue Management Rules:**
+- Clear queue removes only queued items (preserves 50 most recent completed)
+- Individual removal via X button works on queued/completed/failed (NOT active)
+- Event delegation with `data-job-id` attributes (no inline onclick)
+- SVG inside buttons: `pointer-events: none` to prevent click blocking
+- Always await `updateQueue()` for immediate UI feedback
+- Track seen completions with `lastSeenCompletedIds` Set to trigger folder refresh once per new completion
+
 ### Mobile Optimization
 - Queue sidebar: Fixed overlay on mobile (≤768px), collapsed by default
 - Hamburger menu toggles sidebar (`toggleMobileMenu()` with `stopPropagation()`)
@@ -73,6 +81,30 @@ const ok = await showConfirm('Are you sure?');
 // NEVER use: alert(), prompt(), confirm()
 ```
 
+### Event Delegation Pattern
+All dynamically created buttons use event delegation with data attributes:
+```javascript
+// In renderQueueItem()
+<button class="queue-item-cancel" data-job-id="${escapeHtml(job.id)}">
+
+// Event handler (capture phase)
+document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.queue-item-cancel');
+    if (btn) {
+        e.preventDefault();
+        e.stopPropagation();
+        cancelJob(btn.getAttribute('data-job-id'));
+    }
+}, true);  // Capture phase = true
+```
+
+### Image Path Handling
+Always use `relative_path` (includes subfolder) over `filename`:
+```javascript
+const imagePath = image.relative_path || image.filename;
+document.getElementById('detailImage').src = `/outputs/${imagePath}`;
+```
+
 ## Development Commands
 
 ```powershell
@@ -87,8 +119,9 @@ python -m py_compile <file>      # Check syntax
 - `POST /api/queue` - Add job (single generation)
 - `POST /api/queue/batch` - Add multiple jobs with template `[parameter]` replacement
 - `GET /api/queue` - Returns `{queue: [], active: {}, completed: []}`
-- `POST /api/queue/clear` - Clears queued items only (preserves completed)
-- `GET /api/browse?path=<subfolder>` - Browse folder with metadata
+- `DELETE /api/queue/<job_id>` - Remove queued or completed job (not active)
+- `POST /api/queue/clear` - Clears queued items only (preserves completed history)
+- `GET /api/browse?path=<subfolder>` - Browse folder with metadata (relative_path includes subfolder)
 - `POST /api/folder` - Create subfolder
 - `POST /api/move` / `POST /api/delete` - Batch operations with conflict resolution
 - `POST /api/ai/optimize` / `POST /api/ai/suggest` - AI prompt editing
@@ -96,6 +129,8 @@ python -m py_compile <file>      # Check syntax
 - `POST /api/comfyui/unload` - Free RAM/VRAM/cache (manual)
 
 **Auto-unload:** ComfyUI models unload after 60s idle. Ollama models unload after 60s via `keep_alive: '60s'`.
+
+**Response Format:** All write endpoints return JSON with `{success: bool, ...}`. Always check `result.success` in frontend.
 
 ## Project-Specific Conventions
 
@@ -167,6 +202,7 @@ let selectionMode = false;        // Browse vs select toggle
 let zoomLevel = 1;                // Fullscreen zoom (1-5x)
 let autoplayTimer = null;         // Autoplay setTimeout ID
 let isAutoplayActive = false;     // Autoplay on/off state
+let lastSeenCompletedIds = new Set(); // Track seen completions for folder refresh
 ```
 
 ## Integration Notes

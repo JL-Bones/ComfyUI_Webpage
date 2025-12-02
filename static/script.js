@@ -13,6 +13,7 @@ let currentPath = '';
 let selectedItems = new Set();
 let allItems = [];
 let selectionMode = false;
+let lastSeenCompletedIds = new Set();
 
 // Fullscreen zoom state
 let zoomLevel = 1;
@@ -94,6 +95,37 @@ function initializeEventListeners() {
     document.getElementById('toggleQueue').addEventListener('click', toggleQueue);
     document.getElementById('clearQueueBtn').addEventListener('click', clearQueue);
     document.getElementById('unloadModelsBtn').addEventListener('click', unloadComfyUIModels);
+    
+    // Event delegation for cancel buttons and completed images (handles dynamically created content)
+    document.addEventListener('click', function(e) {
+        // Check if click is on or inside a cancel button
+        const cancelBtn = e.target.closest('.queue-item-cancel');
+        if (cancelBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const jobId = cancelBtn.getAttribute('data-job-id');
+            console.log('Cancel button clicked, jobId:', jobId, 'button:', cancelBtn);
+            
+            if (jobId) {
+                cancelJob(jobId);
+            } else {
+                console.error('Cancel button found but no job ID', cancelBtn);
+            }
+            return;
+        }
+        
+        // Handle completed image clicks
+        const completedImg = e.target.closest('.completed-image-thumb');
+        if (completedImg) {
+            const relativePath = completedImg.getAttribute('data-completed-image');
+            if (relativePath) {
+                e.preventDefault();
+                e.stopPropagation();
+                openCompletedImage(relativePath);
+            }
+        }
+    }, true);
     
     // Generate button
     document.getElementById('generateBtn').addEventListener('click', generateImage);
@@ -418,17 +450,21 @@ function toggleQueue() {
 }
 
 async function clearQueue() {
-    const confirmed = await showConfirm('Clear all queued items? This will not affect the currently generating item or completed jobs.', 'Clear Queue');
+    const confirmed = await showConfirm('Clear all queued items? Completed history will be preserved.', 'Clear Queue');
     if (!confirmed) return;
     
     try {
         const response = await fetch('/api/queue/clear', {
-            method: 'POST'
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
         });
         
-        if (response.ok) {
-            updateQueue();
-            showNotification('Queued items cleared successfully', 'Queue Cleared', 'success', 3000);
+        const result = await response.json();
+        
+        if (result.success) {
+            // Force immediate UI update
+            await updateQueue();
+            showNotification(`Cleared ${result.cleared_queued} queued item(s)`, 'Queue Cleared', 'success', 3000);
         } else {
             showNotification('Failed to clear queue', 'Error', 'error');
         }
@@ -464,6 +500,10 @@ async function unloadComfyUIModels() {
 }
 
 function startQueueUpdates() {
+    // Clear tracking on startup to allow folder refresh for existing completions
+    lastSeenCompletedIds.clear();
+    
+    // Start polling
     updateQueue();
     queueUpdateInterval = setInterval(updateQueue, 1000);
 }
@@ -471,14 +511,32 @@ function startQueueUpdates() {
 async function updateQueue() {
     try {
         const response = await fetch('/api/queue');
+        if (!response.ok) {
+            console.error('Queue update failed:', response.status);
+            return;
+        }
+        
         const data = await response.json();
         
-        renderQueue(data.queue, data.active, data.completed || []);
+        // Check for new completions BEFORE rendering
+        const completedJobs = data.completed || [];
+        let shouldRefreshFolder = false;
         
-        // Check if active job just completed with refresh flag
-        if (data.active && data.active.status === 'completed' && data.active.refresh_folder) {
-            // Refresh folder after a short delay
-            setTimeout(() => browseFolder(currentPath), 1000);
+        for (const job of completedJobs) {
+            if (job.status === 'completed' && job.refresh_folder && !lastSeenCompletedIds.has(job.id)) {
+                lastSeenCompletedIds.add(job.id);
+                shouldRefreshFolder = true;
+            }
+        }
+        
+        // Render the queue
+        renderQueue(data.queue, data.active, completedJobs);
+        
+        // Refresh folder if we detected new completions
+        if (shouldRefreshFolder) {
+            setTimeout(() => {
+                browseFolder(currentPath);
+            }, 500);
         }
     } catch (error) {
         console.error('Error updating queue:', error);
@@ -491,6 +549,15 @@ function renderQueue(queue, active, completed) {
     const completedList = document.getElementById('completedList');
     const queueEmpty = document.getElementById('queueEmpty');
     const queueCounter = document.getElementById('queueCounter');
+    
+    if (!queueList || !activeJob || !completedList || !queueEmpty || !queueCounter) {
+        console.error('Queue DOM elements not found');
+        return;
+    }
+    
+    // Ensure we have arrays
+    queue = Array.isArray(queue) ? queue : [];
+    completed = Array.isArray(completed) ? completed : [];
     
     // Filter out the active job from the queue to avoid duplicates
     if (active) {
@@ -511,15 +578,16 @@ function renderQueue(queue, active, completed) {
     }
     
     // Render active/generating job in the middle
-    if (active) {
+    if (active && active.id) {
         activeJob.innerHTML = renderQueueItem(active, true);
         activeJob.style.display = 'block';
     } else {
+        activeJob.innerHTML = '';
         activeJob.style.display = 'none';
     }
     
     // Render completed jobs at the bottom
-    if (completed && completed.length > 0) {
+    if (completed.length > 0) {
         completedList.innerHTML = completed.map(job => renderQueueItem(job, false)).join('');
         completedList.style.display = 'block';
     } else {
@@ -536,18 +604,24 @@ function renderQueueItem(job, isActive) {
     const statusClass = `status-${job.status}`;
     const hasImage = job.status === 'completed' && job.relative_path;
     
+    // Ensure job.id exists
+    if (!job.id) {
+        console.error('Job missing ID:', job);
+        return '';
+    }
+    
     return `
-        <div class="queue-item ${isActive ? 'active' : ''} ${hasImage ? 'has-image' : ''}">
+        <div class="queue-item ${isActive ? 'active' : ''} ${hasImage ? 'has-image' : ''}" data-job-id="${escapeHtml(job.id)}">
             ${hasImage ? `
                 <div class="queue-item-image">
-                    <img src="/outputs/${job.relative_path}" alt="Generated image" onclick="event.stopPropagation(); openCompletedImage('${job.relative_path}')">
+                    <img src="/outputs/${job.relative_path}" alt="Generated image" data-completed-image="${escapeHtml(job.relative_path)}" class="completed-image-thumb">
                 </div>
             ` : ''}
             <div class="queue-item-content">
                 <div class="queue-item-header">
                     <span class="queue-item-status ${statusClass}">${job.status}</span>
-                    ${job.status === 'queued' ? `
-                        <button class="queue-item-cancel" onclick="cancelJob('${job.id}')">
+                    ${(job.status === 'queued' || job.status === 'completed' || job.status === 'failed') && !isActive ? `
+                        <button class="queue-item-cancel" data-job-id="${escapeHtml(job.id)}" title="Remove this item">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <line x1="18" y1="6" x2="6" y2="18"></line>
                                 <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -567,16 +641,32 @@ function renderQueueItem(job, isActive) {
 }
 
 async function cancelJob(jobId) {
+    console.log('cancelJob called with jobId:', jobId);
     try {
         const response = await fetch(`/api/queue/${jobId}`, {
-            method: 'DELETE'
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' }
         });
         
-        if (response.ok) {
-            updateQueue();
+        console.log('Delete response status:', response.status);
+        const result = await response.json();
+        console.log('Delete response:', result);
+        
+        if (result.success) {
+            // Remove from local tracking if it was completed
+            lastSeenCompletedIds.delete(jobId);
+            
+            // Force immediate UI update
+            console.log('Updating queue after deletion...');
+            await updateQueue();
+            showNotification('Item removed', 'Removed', 'success', 2000);
+        } else {
+            console.error('Failed to remove:', result.error);
+            showNotification(result.error || 'Failed to remove item', 'Error', 'error');
         }
     } catch (error) {
-        console.error('Error canceling job:', error);
+        console.error('Error removing job:', error);
+        showNotification('Error removing item', 'Error', 'error');
     }
 }
 
@@ -921,7 +1011,10 @@ function showImageAtIndex(index) {
     
     const image = images[currentImageIndex];
     currentImageData = image; // Store current image data for import
-    document.getElementById('detailImage').src = `/outputs/${image.filename}`;
+    
+    // Use relative_path if available (includes subfolder), otherwise fall back to filename
+    const imagePath = image.relative_path || image.filename;
+    document.getElementById('detailImage').src = `/outputs/${imagePath}`;
     document.getElementById('imageCounter').textContent = `${currentImageIndex + 1} / ${images.length}`;
     document.getElementById('imageMetadata').innerHTML = renderMetadata(image);
 }
@@ -1067,7 +1160,10 @@ function showFullscreenImage(index) {
     }
     
     const image = images[currentImageIndex];
-    document.getElementById('fullscreenImage').src = `/outputs/${image.filename}`;
+    
+    // Use relative_path if available (includes subfolder), otherwise fall back to filename
+    const imagePath = image.relative_path || image.filename;
+    document.getElementById('fullscreenImage').src = `/outputs/${imagePath}`;
     document.getElementById('fullscreenCounter').textContent = `${currentImageIndex + 1} / ${images.length}`;
     
     // Reset zoom when changing images

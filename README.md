@@ -150,6 +150,7 @@ Three ways to provide parameter values:
 ### View Images
 
 - Navigate to the **Image Browser** tab to see your gallery
+- **Browse subfolders** - Images in subfolders display correctly in modal and fullscreen
 - Click any image to open detail view with metadata
 - Use arrow buttons or keyboard (←/→/A/D) to navigate between images
 - Click fullscreen button for immersive viewing with zoom and autoplay
@@ -179,18 +180,19 @@ Three ways to provide parameter values:
 - View all jobs in left sidebar (queued → active → completed)
 - **Mobile:** Tap hamburger menu (☰) in header to open/close queue sidebar
 - **Queued items** appear at top (newest first) with status badge
-- **Active item** shows in middle while generating
-- **Completed items** display at bottom with thumbnail images
-- Cancel queued jobs with the ✕ button
-- Clear entire queue with trash icon in queue header
+- **Active item** shows in middle while generating (cannot be removed)
+- **Completed items** display at bottom with thumbnail images (last 50 preserved)
+- **Remove items** with the ✕ button on queued, completed, or failed jobs
+- **Clear queue** with trash icon - removes only queued items, preserves completed history
 - **Unload models** with cube icon to free RAM/VRAM/cache manually
 - Click completed thumbnails to navigate to image in browser
 - Queue processes oldest first (FIFO) but displays newest on top
-- Real-time status updates every second
-- **Persistent queue** - Survives server restarts
-- **Shared across all users** - All browsers see same queue
+- Real-time status updates every second with immediate UI feedback
+- **Persistent queue** - Survives server restarts via `queue_state.json`
+- **Shared across all users** - All browsers see same queue state
 - Keeps last 50 completed jobs with images
 - **Auto-unload models** - Automatically unloads ComfyUI models 60 seconds after queue empties
+- **Auto-refresh browser** - Gallery refreshes when new images complete
 - **Mobile:** Hamburger menu button toggles queue sidebar, collapsible parameter sections
 
 ## Parameters
@@ -239,9 +241,9 @@ Three ways to provide parameter values:
 - `POST /api/queue` - Add single generation job to queue (adds to front)
 - `POST /api/queue/batch` - Add multiple jobs from template and parameter data
 - `GET /api/queue` - Get queue status (returns queued, active, completed)
-- `DELETE /api/queue/<job_id>` - Cancel specific queued job
-- `POST /api/queue/clear` - Clear all queued and completed items (preserves active)
-- `GET /api/browse` - Browse folder contents (files and subfolders)
+- `DELETE /api/queue/<job_id>` - Remove queued or completed job (not active)
+- `POST /api/queue/clear` - Clear queued items only (preserves completed history)
+- `GET /api/browse` - Browse folder contents (files and subfolders with relative paths)
 - `POST /api/folder` - Create new subfolder
 - `POST /api/move` - Move files/folders (with conflict resolution)
 - `POST /api/delete` - Delete files/empty folders

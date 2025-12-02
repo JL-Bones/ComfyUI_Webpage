@@ -124,6 +124,7 @@ def save_queue_state():
             }
         with open(QUEUE_FILE, 'w') as f:
             json.dump(data, f, indent=2)
+            f.flush()  # Ensure immediate write to disk
     except Exception as e:
         print(f"Error saving queue state: {e}")
 
@@ -360,9 +361,9 @@ def add_batch_to_queue():
 def get_queue():
     """Get current queue status"""
     with queue_lock:
-        queue_copy = generation_queue.copy()
+        queue_copy = [job.copy() for job in generation_queue]
         active = active_generation.copy() if active_generation else None
-        completed_copy = completed_jobs.copy()
+        completed_copy = [job.copy() for job in completed_jobs]
     
     return jsonify({
         'queue': queue_copy,
@@ -373,25 +374,58 @@ def get_queue():
 
 @app.route('/api/queue/<job_id>', methods=['DELETE'])
 def cancel_job(job_id):
-    """Cancel a queued job"""
-    with queue_lock:
-        for i, job in enumerate(generation_queue):
-            if job['id'] == job_id and job['status'] == 'queued':
-                generation_queue.pop(i)
-                save_queue_state()
-                return jsonify({'success': True})
+    """Cancel a queued job or remove a completed job"""
+    removed = False
+    removed_type = None
     
-    return jsonify({'success': False, 'error': 'Job not found or already processing'}), 404
+    with queue_lock:
+        # Check if it's the active job (don't allow removal)
+        if active_generation and active_generation.get('id') == job_id:
+            return jsonify({'success': False, 'error': 'Cannot remove active job'}), 400
+        
+        # Try to remove from queued jobs
+        for i in range(len(generation_queue)):
+            if generation_queue[i]['id'] == job_id:
+                if generation_queue[i].get('status') == 'queued':
+                    generation_queue.pop(i)
+                    removed = True
+                    removed_type = 'queued'
+                    print(f"Removed queued job: {job_id}")
+                    break
+        
+        # If not found in queue, try completed jobs
+        if not removed:
+            for i in range(len(completed_jobs)):
+                if completed_jobs[i]['id'] == job_id:
+                    completed_jobs.pop(i)
+                    removed = True
+                    removed_type = 'completed'
+                    print(f"Removed completed job: {job_id}")
+                    break
+    
+    if removed:
+        save_queue_state()
+        return jsonify({'success': True, 'message': f'{removed_type} job removed'})
+    
+    return jsonify({'success': False, 'error': 'Job not found'}), 404
 
 
 @app.route('/api/queue/clear', methods=['POST'])
 def clear_queue():
-    """Clear only queued jobs (not active or completed ones)"""
+    """Clear only queued jobs (preserve completed history)"""
+    cleared_queued = 0
+    
     with queue_lock:
+        cleared_queued = len(generation_queue)
         generation_queue.clear()
+        # Keep completed_jobs intact to preserve history
     
     save_queue_state()
-    return jsonify({'success': True})
+    print(f"Cleared {cleared_queued} queued jobs (preserved completed history)")
+    return jsonify({
+        'success': True,
+        'cleared_queued': cleared_queued
+    })
 
 
 @app.route('/api/browse')

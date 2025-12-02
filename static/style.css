@@ -225,6 +225,13 @@ body {
     cursor: pointer;
     padding: 0.25rem;
     transition: color 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.queue-item-cancel svg {
+    pointer-events: none;
 }
 
 .queue-item-cancel:hover {
