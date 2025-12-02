@@ -14,6 +14,19 @@ let selectedItems = new Set();
 let allItems = [];
 let selectionMode = false;
 
+// Fullscreen zoom state
+let zoomLevel = 1;
+let zoomPanX = 0;
+let zoomPanY = 0;
+let isDragging = false;
+let dragStartX = 0;
+let dragStartY = 0;
+let lastTouchDistance = 0;
+
+// Autoplay state
+let autoplayTimer = null;
+let isAutoplayActive = false;
+
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
     initializeEventListeners();
@@ -27,6 +40,7 @@ function initializeEventListeners() {
     // Queue toggle
     document.getElementById('toggleQueue').addEventListener('click', toggleQueue);
     document.getElementById('clearQueueBtn').addEventListener('click', clearQueue);
+    document.getElementById('unloadModelsBtn').addEventListener('click', unloadComfyUIModels);
     
     // Generate button
     document.getElementById('generateBtn').addEventListener('click', generateImage);
@@ -48,6 +62,14 @@ function initializeEventListeners() {
     document.getElementById('fullscreenClose').addEventListener('click', closeFullscreen);
     document.getElementById('fullscreenPrev').addEventListener('click', fullscreenPrevImage);
     document.getElementById('fullscreenNext').addEventListener('click', fullscreenNextImage);
+    
+    // Fullscreen zoom controls
+    document.getElementById('fullscreenZoomIn').addEventListener('click', () => adjustZoom(0.2));
+    document.getElementById('fullscreenZoomOut').addEventListener('click', () => adjustZoom(-0.2));
+    document.getElementById('fullscreenZoomReset').addEventListener('click', resetZoom);
+    
+    // Fullscreen autoplay controls
+    document.getElementById('fullscreenPlayPause').addEventListener('click', toggleAutoplay);
     
     // Folder management
     document.getElementById('newFolderBtn').addEventListener('click', createNewFolder);
@@ -299,7 +321,7 @@ function toggleQueue() {
 }
 
 async function clearQueue() {
-    const confirmed = await showConfirm('Clear all queued and completed items? This will not cancel the currently generating item.', 'Clear Queue');
+    const confirmed = await showConfirm('Clear all queued items? This will not affect the currently generating item or completed jobs.', 'Clear Queue');
     if (!confirmed) return;
     
     try {
@@ -309,13 +331,38 @@ async function clearQueue() {
         
         if (response.ok) {
             updateQueue();
-            showNotification('Queue cleared successfully', 'Queue Cleared', 'success', 3000);
+            showNotification('Queued items cleared successfully', 'Queue Cleared', 'success', 3000);
         } else {
             showNotification('Failed to clear queue', 'Error', 'error');
         }
     } catch (error) {
         console.error('Error clearing queue:', error);
         showNotification('Error clearing queue', 'Error', 'error');
+    }
+}
+
+async function unloadComfyUIModels() {
+    const confirmed = await showConfirm(
+        'Unload all ComfyUI models and clear memory (RAM/VRAM/cache)? This is useful to free up system resources when idle.',
+        'Unload Models'
+    );
+    if (!confirmed) return;
+    
+    try {
+        const response = await fetch('/api/comfyui/unload', {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification('Models unloaded and memory cleared', 'Success', 'success', 3000);
+        } else {
+            showNotification('Error: ' + result.error, 'Unload Failed', 'error');
+        }
+    } catch (error) {
+        console.error('Error unloading models:', error);
+        showNotification('Error unloading models', 'Error', 'error');
     }
 }
 
@@ -346,11 +393,16 @@ function renderQueue(queue, active, completed) {
     const activeJob = document.getElementById('activeJob');
     const completedList = document.getElementById('completedList');
     const queueEmpty = document.getElementById('queueEmpty');
+    const queueCounter = document.getElementById('queueCounter');
     
     // Filter out the active job from the queue to avoid duplicates
     if (active) {
         queue = queue.filter(job => job.id !== active.id);
     }
+    
+    // Update queue counter
+    queueCounter.textContent = queue.length;
+    queueCounter.style.display = queue.length > 0 ? 'inline-block' : 'none';
     
     // Render queued jobs at the top
     if (queue.length > 0) {
@@ -872,10 +924,14 @@ function openFullscreen() {
     
     showFullscreenImage(currentImageIndex);
     setupMouseActivityTracking();
+    setupZoomControls();
 }
 
 function closeFullscreen() {
     isFullscreenActive = false;
+    
+    // Stop autoplay
+    stopAutoplay();
     
     // Exit browser fullscreen
     if (document.exitFullscreen) {
@@ -894,6 +950,9 @@ function closeFullscreen() {
         clearTimeout(mouseActivityTimer);
         mouseActivityTimer = null;
     }
+    
+    // Reset zoom
+    resetZoom();
 }
 
 function showFullscreenImage(index) {
@@ -911,6 +970,88 @@ function showFullscreenImage(index) {
     const image = images[currentImageIndex];
     document.getElementById('fullscreenImage').src = `/outputs/${image.filename}`;
     document.getElementById('fullscreenCounter').textContent = `${currentImageIndex + 1} / ${images.length}`;
+    
+    // Reset zoom when changing images
+    resetZoom();
+}
+
+// Zoom Functions
+function adjustZoom(delta) {
+    zoomLevel = Math.max(1, Math.min(5, zoomLevel + delta));
+    applyZoom();
+}
+
+function resetZoom() {
+    zoomLevel = 1;
+    zoomPanX = 0;
+    zoomPanY = 0;
+    applyZoom();
+}
+
+function applyZoom() {
+    const img = document.getElementById('fullscreenImage');
+    const container = document.getElementById('fullscreenImageContainer');
+    
+    img.style.transform = `translate(${zoomPanX}px, ${zoomPanY}px) scale(${zoomLevel})`;
+    img.style.cursor = zoomLevel > 1 ? 'move' : 'default';
+    
+    // Update zoom level display
+    document.getElementById('fullscreenZoomLevel').textContent = `${Math.round(zoomLevel * 100)}%`;
+    
+    // Enable/disable dragging based on zoom level
+    if (zoomLevel > 1) {
+        container.style.overflow = 'hidden';
+    } else {
+        container.style.overflow = 'visible';
+        zoomPanX = 0;
+        zoomPanY = 0;
+    }
+}
+
+// Autoplay Functions
+function toggleAutoplay() {
+    if (isAutoplayActive) {
+        stopAutoplay();
+    } else {
+        startAutoplay();
+    }
+}
+
+function startAutoplay() {
+    isAutoplayActive = true;
+    
+    // Update button icon
+    document.querySelector('#fullscreenPlayPause .play-icon').style.display = 'none';
+    document.querySelector('#fullscreenPlayPause .pause-icon').style.display = 'block';
+    
+    // Start the timer
+    scheduleNextImage();
+}
+
+function stopAutoplay() {
+    isAutoplayActive = false;
+    
+    // Update button icon
+    document.querySelector('#fullscreenPlayPause .play-icon').style.display = 'block';
+    document.querySelector('#fullscreenPlayPause .pause-icon').style.display = 'none';
+    
+    // Clear the timer
+    if (autoplayTimer) {
+        clearTimeout(autoplayTimer);
+        autoplayTimer = null;
+    }
+}
+
+function scheduleNextImage() {
+    if (!isAutoplayActive) return;
+    
+    const interval = parseFloat(document.getElementById('fullscreenAutoplayInterval').value) || 3;
+    const milliseconds = interval * 1000;
+    
+    autoplayTimer = setTimeout(() => {
+        fullscreenNextImage();
+        scheduleNextImage();
+    }, milliseconds);
 }
 
 function fullscreenNextImage() {
@@ -921,25 +1062,133 @@ function fullscreenPrevImage() {
     showFullscreenImage(currentImageIndex - 1);
 }
 
+// Zoom Controls Setup
+function setupZoomControls() {
+    const img = document.getElementById('fullscreenImage');
+    const container = document.getElementById('fullscreenImageContainer');
+    
+    // Mouse wheel zoom
+    container.addEventListener('wheel', (e) => {
+        if (!isFullscreenActive) return;
+        e.preventDefault();
+        
+        const delta = e.deltaY > 0 ? -0.1 : 0.1;
+        adjustZoom(delta);
+    }, { passive: false });
+    
+    // Drag to pan when zoomed
+    img.addEventListener('mousedown', (e) => {
+        if (zoomLevel <= 1) return;
+        e.preventDefault();
+        
+        isDragging = true;
+        dragStartX = e.clientX - zoomPanX;
+        dragStartY = e.clientY - zoomPanY;
+        img.style.cursor = 'grabbing';
+    });
+    
+    container.addEventListener('mousemove', (e) => {
+        if (!isDragging || zoomLevel <= 1) return;
+        e.preventDefault();
+        
+        zoomPanX = e.clientX - dragStartX;
+        zoomPanY = e.clientY - dragStartY;
+        applyZoom();
+    });
+    
+    container.addEventListener('mouseup', () => {
+        if (isDragging) {
+            isDragging = false;
+            const img = document.getElementById('fullscreenImage');
+            img.style.cursor = zoomLevel > 1 ? 'move' : 'default';
+        }
+    });
+    
+    container.addEventListener('mouseleave', () => {
+        if (isDragging) {
+            isDragging = false;
+            const img = document.getElementById('fullscreenImage');
+            img.style.cursor = zoomLevel > 1 ? 'move' : 'default';
+        }
+    });
+    
+    // Touch support for pinch-to-zoom
+    container.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 2) {
+            // Pinch zoom start
+            const touch1 = e.touches[0];
+            const touch2 = e.touches[1];
+            lastTouchDistance = Math.hypot(
+                touch2.clientX - touch1.clientX,
+                touch2.clientY - touch1.clientY
+            );
+        } else if (e.touches.length === 1) {
+            // Single touch for swipe
+            touchStartX = e.touches[0].screenX;
+            
+            // Pan if zoomed
+            if (zoomLevel > 1) {
+                isDragging = true;
+                dragStartX = e.touches[0].clientX - zoomPanX;
+                dragStartY = e.touches[0].clientY - zoomPanY;
+            }
+        }
+    }, false);
+    
+    container.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 2) {
+            // Pinch zoom
+            e.preventDefault();
+            const touch1 = e.touches[0];
+            const touch2 = e.touches[1];
+            const distance = Math.hypot(
+                touch2.clientX - touch1.clientX,
+                touch2.clientY - touch1.clientY
+            );
+            
+            if (lastTouchDistance > 0) {
+                const delta = (distance - lastTouchDistance) * 0.01;
+                adjustZoom(delta);
+            }
+            
+            lastTouchDistance = distance;
+        } else if (e.touches.length === 1 && isDragging && zoomLevel > 1) {
+            // Pan when zoomed
+            e.preventDefault();
+            zoomPanX = e.touches[0].clientX - dragStartX;
+            zoomPanY = e.touches[0].clientY - dragStartY;
+            applyZoom();
+        }
+    }, { passive: false });
+    
+    container.addEventListener('touchend', (e) => {
+        if (e.touches.length < 2) {
+            lastTouchDistance = 0;
+        }
+        
+        if (e.touches.length === 0) {
+            // Touch ended
+            if (isDragging) {
+                isDragging = false;
+            } else if (touchStartX !== 0) {
+                // Swipe detection
+                touchEndX = e.changedTouches[0].screenX;
+                handleSwipe();
+            }
+        }
+    }, false);
+}
+
 // Touch Support
 function initTouchSupport() {
-    const viewer = document.getElementById('fullscreenViewer');
-    
-    viewer.addEventListener('touchstart', (e) => {
-        touchStartX = e.changedTouches[0].screenX;
-    }, false);
-    
-    viewer.addEventListener('touchend', (e) => {
-        touchEndX = e.changedTouches[0].screenX;
-        handleSwipe();
-    }, false);
+    // Touch support is now handled in setupZoomControls
 }
 
 function handleSwipe() {
     const swipeThreshold = 50;
     const diff = touchStartX - touchEndX;
     
-    if (Math.abs(diff) > swipeThreshold) {
+    if (Math.abs(diff) > swipeThreshold && zoomLevel <= 1) {
         if (diff > 0) {
             // Swiped left - next image
             fullscreenNextImage();
@@ -948,6 +1197,10 @@ function handleSwipe() {
             fullscreenPrevImage();
         }
     }
+    
+    // Reset touch positions
+    touchStartX = 0;
+    touchEndX = 0;
 }
 
 // Mouse Activity Tracking
@@ -995,6 +1248,15 @@ function handleKeyboard(e) {
             fullscreenNextImage();
         } else if (e.key === 'Escape') {
             closeFullscreen();
+        } else if (e.key === '+' || e.key === '=') {
+            adjustZoom(0.2);
+        } else if (e.key === '-' || e.key === '_') {
+            adjustZoom(-0.2);
+        } else if (e.key === '0') {
+            resetZoom();
+        } else if (e.key === ' ') {
+            e.preventDefault();
+            toggleAutoplay();
         }
         return;
     }
@@ -1045,9 +1307,35 @@ function initializeBatchMode() {
     // Preview and generate buttons
     document.getElementById('previewBatchBtn').addEventListener('click', previewBatch);
     document.getElementById('generateBatchBtn').addEventListener('click', generateBatch);
+    document.getElementById('downloadCSVBtn').addEventListener('click', downloadBatchCSV);
     
     // File input change
     document.getElementById('batchDataFile').addEventListener('change', handleFileUpload);
+    
+    // Parameter checkbox handlers
+    setupBatchParameterCheckboxes();
+}
+
+function setupBatchParameterCheckboxes() {
+    const paramFields = ['Width', 'Height', 'Steps', 'Seed', 'FilePrefix', 'Subfolder', 'Nsfw'];
+    
+    paramFields.forEach(field => {
+        const checkbox = document.getElementById(`batch${field}Param`);
+        const input = document.getElementById(`batch${field}ParamValue`);
+        const mainInput = document.getElementById(`batch${field}`);
+        
+        if (checkbox && input) {
+            checkbox.addEventListener('change', () => {
+                if (checkbox.checked) {
+                    input.style.display = 'block';
+                    if (mainInput) mainInput.disabled = true;
+                } else {
+                    input.style.display = 'none';
+                    if (mainInput) mainInput.disabled = false;
+                }
+            });
+        }
+    });
 }
 
 function switchInputMethod(method) {
@@ -1190,7 +1478,49 @@ function parseManualData() {
         batchData.push(paramValues);
     }
     
+    // Add parameterized fields if checkboxes are checked
+    addParameterizedFields(batchData, count);
+    
     return batchData;
+}
+
+function addParameterizedFields(batchData, count) {
+    const paramFields = [
+        { name: 'width', checkbox: 'batchWidthParam', input: 'batchWidthParamValue', type: 'number' },
+        { name: 'height', checkbox: 'batchHeightParam', input: 'batchHeightParamValue', type: 'number' },
+        { name: 'steps', checkbox: 'batchStepsParam', input: 'batchStepsParamValue', type: 'number' },
+        { name: 'seed', checkbox: 'batchSeedParam', input: 'batchSeedParamValue', type: 'number' },
+        { name: 'file_prefix', checkbox: 'batchFilePrefixParam', input: 'batchFilePrefixParamValue', type: 'string' },
+        { name: 'subfolder', checkbox: 'batchSubfolderParam', input: 'batchSubfolderParamValue', type: 'string' },
+        { name: 'nsfw', checkbox: 'batchNsfwParam', input: 'batchNsfwParamValue', type: 'boolean' }
+    ];
+    
+    paramFields.forEach(field => {
+        const checkbox = document.getElementById(field.checkbox);
+        const input = document.getElementById(field.input);
+        
+        if (checkbox && checkbox.checked && input && input.value.trim()) {
+            const values = input.value.split(',').map(v => v.trim()).filter(v => v);
+            
+            if (values.length !== count && values.length !== batchData.length) {
+                throw new Error(`${field.name} parameter needs exactly ${count} values (found ${values.length})`);
+            }
+            
+            // Add to each batch data entry
+            batchData.forEach((data, index) => {
+                let value = values[index];
+                
+                // Type conversion
+                if (field.type === 'number') {
+                    value = value === '' ? null : parseFloat(value);
+                } else if (field.type === 'boolean') {
+                    value = value.toLowerCase() === 'true' || value === '1';
+                }
+                
+                data[field.name] = value;
+            });
+        }
+    });
 }
 
 function parseCSV(csvText) {
@@ -1229,14 +1559,18 @@ function parseTextareaData() {
     if (text.startsWith('[') || text.startsWith('{')) {
         try {
             const data = JSON.parse(text);
-            return Array.isArray(data) ? data : [data];
+            const batchData = Array.isArray(data) ? data : [data];
+            // Parameterized fields from CSV/JSON are already in the data
+            return batchData;
         } catch (e) {
             throw new Error('Invalid JSON format: ' + e.message);
         }
     }
     
     // Try CSV
-    return parseCSV(text);
+    const csvData = parseCSV(text);
+    // CSV may already contain parameterized fields as columns
+    return csvData;
 }
 
 async function handleFileUpload(event) {
@@ -1292,10 +1626,33 @@ async function previewBatch() {
         
         batchData.forEach((params, index) => {
             const prompt = replaceParameters(template, params);
+            
+            // Build parameter info
+            let paramInfo = '';
+            if (params.width || params.height) {
+                paramInfo += `<span class="param-badge">${params.width || '?'}x${params.height || '?'}</span> `;
+            }
+            if (params.steps) {
+                paramInfo += `<span class="param-badge">${params.steps} steps</span> `;
+            }
+            if (params.seed) {
+                paramInfo += `<span class="param-badge">Seed: ${params.seed}</span> `;
+            }
+            if (params.file_prefix) {
+                paramInfo += `<span class="param-badge">Prefix: ${params.file_prefix}</span> `;
+            }
+            if (params.subfolder) {
+                paramInfo += `<span class="param-badge">Folder: ${params.subfolder}</span> `;
+            }
+            if (params.nsfw) {
+                paramInfo += `<span class="param-badge nsfw-badge">NSFW</span> `;
+            }
+            
             html += `
                 <div style="padding: 0.75rem; background: var(--bg-primary); border-radius: 4px; border-left: 3px solid var(--primary);">
                     <div style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.25rem;">Image ${index + 1}</div>
-                    <div style="color: var(--text-primary);">${escapeHtml(prompt)}</div>
+                    <div style="color: var(--text-primary); margin-bottom: 0.5rem;">${escapeHtml(prompt)}</div>
+                    ${paramInfo ? `<div style="margin-top: 0.5rem;">${paramInfo}</div>` : ''}
                 </div>
             `;
         });
@@ -1306,10 +1663,95 @@ async function previewBatch() {
                  </div>`;
         
         preview.innerHTML = html;
+        
+        // Show download button if we have data
+        document.getElementById('downloadCSVBtn').style.display = 'inline-flex';
+        
         showNotification('Batch preview generated successfully', 'Preview Ready', 'success', 3000);
         
     } catch (error) {
         showNotification('Preview error: ' + error.message, 'Error', 'error');
+    }
+}
+
+function downloadBatchCSV() {
+    try {
+        const template = document.getElementById('batchPromptTemplate').value.trim();
+        
+        // Get batch data based on input method
+        let batchData;
+        if (currentInputMethod === 'manual') {
+            batchData = parseManualData();
+        } else if (currentInputMethod === 'textarea') {
+            batchData = parseTextareaData();
+        } else if (currentInputMethod === 'file') {
+            if (parsedBatchData.length === 0) {
+                showNotification('Please upload a file first', 'No File', 'warning');
+                return;
+            }
+            batchData = parsedBatchData;
+        }
+        
+        if (batchData.length === 0) {
+            showNotification('No data to download', 'Empty Data', 'warning');
+            return;
+        }
+        
+        // Convert to CSV with instructions
+        const parameters = extractParametersFromTemplate(template);
+        const csvLines = [];
+        
+        // Add instruction header
+        csvLines.push('# ComfyUI Batch Generation CSV');
+        csvLines.push('# Generated: ' + new Date().toLocaleString());
+        csvLines.push('#');
+        csvLines.push('# Template: ' + template);
+        csvLines.push('# Parameters: ' + parameters.join(', '));
+        csvLines.push('# Total variations: ' + batchData.length);
+        csvLines.push('#');
+        csvLines.push('# Usage Instructions:');
+        csvLines.push('# 1. Upload this file in the Batch Generation tab');
+        csvLines.push('# 2. Set your desired Width, Height, Steps, and other settings');
+        csvLines.push('# 3. Click "Generate Batch" to create all variations');
+        csvLines.push('#');
+        csvLines.push('# CSV Data:');
+        csvLines.push('');
+        
+        // Add CSV header
+        csvLines.push(parameters.join(','));
+        
+        // Add data rows
+        batchData.forEach(row => {
+            const values = parameters.map(param => {
+                const value = String(row[param] || '');
+                // Escape commas and quotes
+                if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+                    return '"' + value.replace(/"/g, '""') + '"';
+                }
+                return value;
+            });
+            csvLines.push(values.join(','));
+        });
+        
+        // Create download
+        const csvContent = csvLines.join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        
+        const timestamp = new Date().toISOString().slice(0, 10);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `comfyui_batch_${timestamp}.csv`);
+        link.style.visibility = 'hidden';
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        showNotification('CSV file downloaded successfully', 'Downloaded', 'success', 3000);
+        
+    } catch (error) {
+        showNotification('Download error: ' + error.message, 'Error', 'error');
     }
 }
 
@@ -1414,7 +1856,7 @@ async function generateBatch() {
         
         if (!batchOptions) return; // User cancelled
         
-        // Collect shared parameters with user-confirmed values
+        // Collect shared parameters with user-confirmed values (only used if not parameterized per-image)
         const sharedParams = {
             width: parseInt(document.getElementById('batchWidth').value),
             height: parseInt(document.getElementById('batchHeight').value),
@@ -1457,4 +1899,381 @@ async function generateBatch() {
 // Initialize batch mode when DOM loads
 document.addEventListener('DOMContentLoaded', function() {
     initializeBatchMode();
+    initializeAIFeatures();
 });
+
+// ============================================================================
+// AI ASSISTANT FEATURES
+// ============================================================================
+
+let aiModels = { ollama: [], gemini: [] };
+let aiCurrentPromptSource = null; // 'single' or 'batch'
+
+function initializeAIFeatures() {
+    // Load available models
+    loadAIModels();
+    
+    // Single generation AI edit button
+    document.getElementById('editPromptWithAI').addEventListener('click', () => {
+        openAIEditModal('single');
+    });
+    
+    // Batch generation AI edit button
+    document.getElementById('editBatchPromptWithAI').addEventListener('click', () => {
+        openAIEditModal('batch');
+    });
+    
+    // AI Parameter Generator button
+    document.getElementById('aiGenerateParametersBtn').addEventListener('click', openAIParameterModal);
+    
+    // AI Edit Modal events
+    document.getElementById('aiProvider').addEventListener('change', updateAIModelList);
+    document.getElementById('aiOptimizeBtn').addEventListener('click', aiOptimizePrompt);
+    document.getElementById('aiApplySuggestionBtn').addEventListener('click', aiApplySuggestion);
+    document.getElementById('aiCopyPromptBtn').addEventListener('click', aiCopyCurrentPrompt);
+    document.getElementById('aiModalCancelBtn').addEventListener('click', closeAIEditModal);
+    document.getElementById('aiModalUseBtn').addEventListener('click', aiUseResult);
+    
+    // AI Parameter Modal events
+    document.getElementById('aiParamProvider').addEventListener('change', updateAIParamModelList);
+    document.getElementById('aiGenerateParamsBtn').addEventListener('click', aiGenerateParameters);
+    document.getElementById('aiParamModalCancelBtn').addEventListener('click', closeAIParameterModal);
+    document.getElementById('aiParamModalUseBtn').addEventListener('click', aiUseParameterResult);
+    
+    // Allow Enter key in suggestion input
+    document.getElementById('aiSuggestion').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            aiApplySuggestion();
+        }
+    });
+}
+
+async function loadAIModels() {
+    try {
+        const response = await fetch('/api/ai/models');
+        const result = await response.json();
+        
+        if (result.success) {
+            aiModels = result.models;
+            updateAIModelList();
+            updateAIParamModelList();
+        } else {
+            console.error('Failed to load AI models:', result.error);
+        }
+    } catch (error) {
+        console.error('Error loading AI models:', error);
+    }
+}
+
+function updateAIModelList() {
+    const provider = document.getElementById('aiProvider').value;
+    const modelSelect = document.getElementById('aiModel');
+    const modelInfo = document.getElementById('modelInfo');
+    
+    const models = aiModels[provider] || [];
+    
+    if (models.length === 0) {
+        modelSelect.innerHTML = '<option value="">No models available</option>';
+        if (provider === 'ollama') {
+            modelInfo.textContent = 'Make sure Ollama is running with at least one model installed';
+            modelInfo.style.color = 'var(--warning)';
+        } else {
+            modelInfo.textContent = 'Add GEMINI_API_KEY to .env file to use Gemini models';
+            modelInfo.style.color = 'var(--warning)';
+        }
+    } else {
+        modelSelect.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
+        modelInfo.textContent = `${models.length} model(s) available`;
+        modelInfo.style.color = 'var(--success)';
+    }
+}
+
+function updateAIParamModelList() {
+    const provider = document.getElementById('aiParamProvider').value;
+    const modelSelect = document.getElementById('aiParamModel');
+    
+    const models = aiModels[provider] || [];
+    
+    if (models.length === 0) {
+        modelSelect.innerHTML = '<option value="">No models available</option>';
+    } else {
+        modelSelect.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
+    }
+}
+
+function openAIEditModal(source) {
+    aiCurrentPromptSource = source;
+    
+    const promptText = source === 'single' 
+        ? document.getElementById('prompt').value.trim()
+        : document.getElementById('batchPromptTemplate').value.trim();
+    
+    if (!promptText) {
+        showNotification('Please enter a prompt first', 'Empty Prompt', 'warning');
+        return;
+    }
+    
+    // Set current prompt
+    document.getElementById('aiCurrentPrompt').value = promptText;
+    document.getElementById('aiResult').value = '';
+    document.getElementById('aiSuggestion').value = '';
+    
+    // Show modal
+    document.getElementById('aiEditModal').style.display = 'flex';
+}
+
+function closeAIEditModal() {
+    document.getElementById('aiEditModal').style.display = 'none';
+    aiCurrentPromptSource = null;
+}
+
+async function aiOptimizePrompt() {
+    const prompt = document.getElementById('aiCurrentPrompt').value.trim();
+    const provider = document.getElementById('aiProvider').value;
+    const model = document.getElementById('aiModel').value;
+    
+    if (!model) {
+        showNotification('Please select a model', 'No Model Selected', 'warning');
+        return;
+    }
+    
+    if (!prompt) {
+        showNotification('No prompt to optimize', 'Empty Prompt', 'warning');
+        return;
+    }
+    
+    // Show loading
+    document.getElementById('aiLoadingIndicator').style.display = 'block';
+    document.getElementById('aiOptimizeBtn').disabled = true;
+    
+    try {
+        const response = await fetch('/api/ai/optimize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt, model, provider })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            document.getElementById('aiResult').value = result.optimized_prompt;
+            showNotification('Prompt optimized successfully!', 'Success', 'success', 3000);
+        } else {
+            showNotification('Error: ' + result.error, 'Optimization Failed', 'error');
+        }
+    } catch (error) {
+        console.error('AI optimization error:', error);
+        showNotification('Network error occurred', 'Error', 'error');
+    } finally {
+        document.getElementById('aiLoadingIndicator').style.display = 'none';
+        document.getElementById('aiOptimizeBtn').disabled = false;
+    }
+}
+
+async function aiApplySuggestion() {
+    const prompt = document.getElementById('aiCurrentPrompt').value.trim();
+    const suggestion = document.getElementById('aiSuggestion').value.trim();
+    const provider = document.getElementById('aiProvider').value;
+    const model = document.getElementById('aiModel').value;
+    
+    if (!model) {
+        showNotification('Please select a model', 'No Model Selected', 'warning');
+        return;
+    }
+    
+    if (!prompt || !suggestion) {
+        showNotification('Both prompt and suggestion are required', 'Missing Input', 'warning');
+        return;
+    }
+    
+    // Show loading
+    document.getElementById('aiLoadingIndicator').style.display = 'block';
+    document.getElementById('aiApplySuggestionBtn').disabled = true;
+    
+    try {
+        const response = await fetch('/api/ai/suggest', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt, suggestion, model, provider })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            document.getElementById('aiResult').value = result.edited_prompt || result.optimized_prompt;
+            showNotification('Suggestion applied successfully!', 'Success', 'success', 3000);
+        } else {
+            showNotification('Error: ' + result.error, 'Suggestion Failed', 'error');
+        }
+    } catch (error) {
+        console.error('AI suggestion error:', error);
+        showNotification('Network error occurred', 'Error', 'error');
+    } finally {
+        document.getElementById('aiLoadingIndicator').style.display = 'none';
+        document.getElementById('aiApplySuggestionBtn').disabled = false;
+    }
+}
+
+function aiCopyCurrentPrompt() {
+    const prompt = document.getElementById('aiCurrentPrompt').value;
+    navigator.clipboard.writeText(prompt).then(() => {
+        showNotification('Prompt copied to clipboard', 'Copied', 'success', 2000);
+    }).catch(err => {
+        console.error('Copy failed:', err);
+        showNotification('Failed to copy', 'Error', 'error');
+    });
+}
+
+function aiUseResult() {
+    const result = document.getElementById('aiResult').value.trim();
+    
+    if (!result) {
+        showNotification('No result to use', 'Empty Result', 'warning');
+        return;
+    }
+    
+    // Update the appropriate prompt field
+    if (aiCurrentPromptSource === 'single') {
+        document.getElementById('prompt').value = result;
+    } else if (aiCurrentPromptSource === 'batch') {
+        document.getElementById('batchPromptTemplate').value = result;
+    }
+    
+    closeAIEditModal();
+    showNotification('Prompt updated successfully', 'Updated', 'success', 3000);
+}
+
+// AI Parameter Generation
+
+function openAIParameterModal() {
+    const template = document.getElementById('batchPromptTemplate').value.trim();
+    
+    if (!template) {
+        showNotification('Please enter a prompt template first', 'Empty Template', 'warning');
+        return;
+    }
+    
+    // Extract parameters
+    const parameters = extractParametersFromTemplate(template);
+    if (parameters.length === 0) {
+        showNotification('No parameters found in template. Use [parameter_name] syntax.', 'No Parameters', 'warning');
+        return;
+    }
+    
+    // Reset form
+    document.getElementById('aiParamCount').value = 5;
+    document.getElementById('aiParamContext').value = '';
+    document.getElementById('aiParamResult').value = '';
+    document.querySelectorAll('input[name="aiContextType"]')[0].checked = true;
+    
+    // Show modal
+    document.getElementById('aiParameterModal').style.display = 'flex';
+}
+
+function closeAIParameterModal() {
+    document.getElementById('aiParameterModal').style.display = 'none';
+}
+
+async function aiGenerateParameters() {
+    const template = document.getElementById('batchPromptTemplate').value.trim();
+    const count = parseInt(document.getElementById('aiParamCount').value);
+    const context = document.getElementById('aiParamContext').value.trim();
+    const contextType = document.querySelector('input[name="aiContextType"]:checked').value;
+    const provider = document.getElementById('aiParamProvider').value;
+    const model = document.getElementById('aiParamModel').value;
+    
+    if (!model) {
+        showNotification('Please select a model', 'No Model Selected', 'warning');
+        return;
+    }
+    
+    if (!template) {
+        showNotification('Template is required', 'Missing Template', 'warning');
+        return;
+    }
+    
+    if (count < 1 || count > 50) {
+        showNotification('Count must be between 1 and 50', 'Invalid Count', 'warning');
+        return;
+    }
+    
+    // Collect batch parameters to provide context to AI
+    const batchParams = {
+        width: document.getElementById('batchWidth').value,
+        height: document.getElementById('batchHeight').value,
+        steps: document.getElementById('batchSteps').value,
+        seed: document.getElementById('batchSeed').value || 'random',
+        nsfw: document.getElementById('batchNsfw').checked,
+        file_prefix: document.getElementById('batchFilePrefix').value,
+        subfolder: document.getElementById('batchSubfolder').value
+    };
+    
+    // Check which parameters are being varied per-image
+    const variedParams = [];
+    if (document.getElementById('batchWidthParam').checked) variedParams.push('width');
+    if (document.getElementById('batchHeightParam').checked) variedParams.push('height');
+    if (document.getElementById('batchStepsParam').checked) variedParams.push('steps');
+    if (document.getElementById('batchSeedParam').checked) variedParams.push('seed');
+    if (document.getElementById('batchFilePrefixParam').checked) variedParams.push('file_prefix');
+    if (document.getElementById('batchSubfolderParam').checked) variedParams.push('subfolder');
+    if (document.getElementById('batchNsfwParam').checked) variedParams.push('nsfw');
+    
+    // Show loading
+    document.getElementById('aiParamLoadingIndicator').style.display = 'block';
+    document.getElementById('aiGenerateParamsBtn').disabled = true;
+    
+    try {
+        const response = await fetch('/api/ai/generate-parameters', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                template,
+                count,
+                context: context || 'Generate diverse and creative variations',
+                context_type: contextType,
+                model,
+                provider,
+                batch_params: batchParams,
+                varied_params: variedParams
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            document.getElementById('aiParamResult').value = result.data;
+            showNotification('Parameters generated successfully!', 'Success', 'success', 3000);
+        } else {
+            showNotification('Error: ' + result.error, 'Generation Failed', 'error');
+        }
+    } catch (error) {
+        console.error('AI parameter generation error:', error);
+        showNotification('Network error occurred', 'Error', 'error');
+    } finally {
+        document.getElementById('aiParamLoadingIndicator').style.display = 'none';
+        document.getElementById('aiGenerateParamsBtn').disabled = false;
+    }
+}
+
+function aiUseParameterResult() {
+    const csvData = document.getElementById('aiParamResult').value.trim();
+    
+    if (!csvData) {
+        showNotification('No data to use', 'Empty Result', 'warning');
+        return;
+    }
+    
+    // Switch to textarea input method and populate it
+    switchInputMethod('textarea');
+    document.getElementById('batchDataText').value = csvData;
+    
+    // Try to parse it immediately
+    try {
+        parsedBatchData = parseCSV(csvData);
+        showNotification(`Loaded ${parsedBatchData.length} variations successfully`, 'Data Loaded', 'success', 3000);
+    } catch (error) {
+        showNotification('Warning: ' + error.message + ' - You may need to adjust the data.', 'Parse Warning', 'warning');
+    }
+    
+    closeAIParameterModal();
+}

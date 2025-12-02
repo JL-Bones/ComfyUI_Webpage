@@ -1,282 +1,177 @@
 # ComfyUI Web Interface - AI Agent Instructions
 
 ## Project Overview
-Flask-based web UI for ComfyUI image generation with **tab-based interface**, hierarchical folder management, custom modals, queue system with completed history, and real-time updates. **Requires ComfyUI server running on `http://127.0.0.1:8188`**.
+Flask-based web UI for ComfyUI image generation with AI-assisted prompting, batch processing, queue management, and file organization. **Requires ComfyUI server at `http://127.0.0.1:8188`**. Zero pip dependencies except Flask.
 
-## Architecture
+## Architecture (Three-Layer System)
 
-### Three-Layer System
-1. **ComfyUI Client** (`comfyui_client.py`): Python wrapper around ComfyUI REST API using only stdlib
-2. **Flask Backend** (`app.py`): Queue processor with LIFO display/FIFO processing, folder management, metadata storage, serves web UI on `0.0.0.0:4879`
-3. **Frontend** (`templates/index.html`, `static/`): Dark-themed tabbed SPA with folder browser, custom modals, and fullscreen image viewer
-
-### Data Flow
-```
-User Input → Flask Queue (LIFO display) → Background Thread (FIFO processing) → ComfyUI API → Image + Metadata Storage
-                ↓                                                                                     ↓
-         Real-time Queue Updates (1s polling)                                    Folder Browser with Auto-refresh
-         Queued → Active → Completed (with thumbnails)
-```
-
-### Tab System
-Three main tabs switch content visibility:
-- **Single Generation**: Image generation form (active by default)
-- **Batch Generation**: Template-based generation with [parameter] replacement, supports CSV/JSON import
-- **Image Browser**: Folder navigation and image gallery
-
-## Critical Workflow Nodes (Imaginer.json)
-
-The workflow uses **hardcoded node IDs** that must match exactly:
-- `75:6` - Positive prompt (CLIPTextEncode)
-- `75:58` - Dimensions (EmptySD3LatentImage)
-- `75:3` - Sampler settings (KSampler)
+**1. ComfyUI Client** (`comfyui_client.py`)  
+Python wrapper using only stdlib (urllib, json). Modifies workflow JSON with hardcoded node IDs from `Imaginer.json`:
+- `75:6` - Positive prompt (CLIPTextEncode)  
+- `75:58` - Dimensions (EmptySD3LatentImage)  
+- `75:3` - Sampler (KSampler)  
 - `75:89` - NSFW toggle (easy boolean)
 
-When modifying workflow parameters in `comfyui_client.py`, use these exact node IDs. **Do not change node structure without updating client code.**
+**2. Flask Backend** (`app.py`)  
+Queue processor (LIFO display, FIFO execution), metadata storage, AI integration. Serves on `0.0.0.0:4879`. Background daemon thread processes queue sequentially.
 
-## Key Conventions
+**3. Frontend** (`templates/index.html`, `static/`)  
+Vanilla JS SPA with tabs (Single/Batch/Browser), custom modals (no browser dialogs), toast notifications, 1s polling for updates.
+
+**Data Flow:**  
+```
+User → Queue (front insert) → Thread (end pop, oldest first) → ComfyUI → Image + Metadata
+         ↓ 1s poll                                                           ↓ auto-refresh
+    3-section UI (queued/active/completed)                          Folder browser + thumbnails
+```
+
+## Critical Patterns
+
+### Queue System (Thread-Safe LIFO/FIFO)
+```python
+# Add to FRONT for display (newest on top)
+with queue_lock:
+    generation_queue.insert(0, job)
+    
+# Process from END (oldest first, FIFO execution)
+with queue_lock:
+    job = generation_queue[-1]  # Take oldest
+    active_generation = job
+    
+# Metadata saved BEFORE releasing lock (sequential batch processing)
+with queue_lock:
+    generation_queue.pop()
+    completed_jobs.insert(0, job)  # Last 50 kept
+    active_generation = None
+```
+
+**Persistent State:** `outputs/queue_state.json` survives restarts, shared across all browsers/users.
+
+### File Naming (Auto-Increment)
+```python
+def get_next_filename(prefix: str, subfolder: str = "") -> tuple:
+    # Scans existing files, returns (relative_path, absolute_path)
+    # Pattern: "{prefix}{index:04d}.png" (e.g., "comfyui0000.png")
+    
+def get_unique_filename(target_path: Path) -> Path:
+    # On conflict: "file (1).png", "file (2).png", etc.
+```
 
 ### Metadata Storage
-- All generation params stored in `outputs/metadata.json` as flat array
-- **Seed is always captured** - random seeds are generated and logged during processing
-- **Negative prompt removed** - not stored or displayed
-- CFG scale removed from UI but hardcoded to `1.0` in backend
-- Filename pattern: `{file_prefix}{index:04d}.png` (e.g., `comfyui0000.png`, `myprefix0001.png`)
-- Each entry includes `subfolder` field for hierarchical organization
+Flat JSON array in `outputs/metadata.json` with fields: `id, filename, path, subfolder, timestamp, prompt, width, height, steps, seed, nsfw, file_prefix`. Seed always captured (random if not provided). **No negative prompt or CFG stored** (CFG hardcoded to 1.0).
 
-### File Management Pattern
-```python
-# Auto-incrementing filenames with prefix
-def get_next_filename(prefix: str, subfolder: str = "", extension: str = "png") -> tuple:
-    # Returns (relative_path, absolute_path)
-    # Scans folder for existing files with same prefix
-    # Increments index until unique filename found
+### AI Integration (`ai_assistant.py`)
+Dual provider: Ollama (local, port 11434) and Gemini (API key from `.env`). Auto-discovers models, unloads Ollama immediately after use. Preset instructions in `ai_instructions.py` for optimization, editing, batch generation. **Context-aware batch generation:** Receives batch_params (width, height, steps, seed, nsfw, file_prefix, subfolder) and varied_params (which checkboxes enabled) to provide parameter-specific suggestions (dimension ranges, step counts, seed values, organized file prefixes/folders).
 
-# Conflict resolution on move/copy
-def get_unique_filename(target_path: Path) -> Path:
-    # Appends (1), (2), etc. if file exists at target
-    # Pattern: "filename (1).png", "filename (2).png"
-```
-
-### Queue Management Pattern
-```python
-# Thread-safe LIFO display / FIFO processing
-with queue_lock:
-    generation_queue.insert(0, job)  # Add to FRONT (newest at top)
-    
-# Processing takes from END (oldest first)
-with queue_lock:
-    if generation_queue and not active_generation:
-        job = generation_queue[-1]  # Take from end (oldest item)
-        active_generation = job
-        job['status'] = 'generating'
-
-# Completed jobs kept in separate history (last 50)
-completed_jobs.insert(0, job)
-if len(completed_jobs) > MAX_COMPLETED_HISTORY:
-    completed_jobs.pop()
-```
-
-**Critical Queue Behavior**:
-- New items added to **front** of queue (visual: newest on top)
-- Processing takes from **end** of queue (execution: oldest first / FIFO)
-- Completed jobs stored separately with image paths for thumbnails
-- Queue renders in 3 sections: `queueList` (pending) → `activeJob` (generating) → `completedList` (finished)
-- `/api/queue` returns `{'queue': [...], 'active': {...}, 'completed': [...]}`
-- **Persistent storage** in `outputs/queue_state.json` - survives server restarts
-- **Shared across all users/browsers** - all sessions see same queue state
-- Auto-saves after every queue operation (add, cancel, complete, clear)
-
-### API Response Structure
-All Flask endpoints return JSON with consistent patterns:
-- Queue operations: `{'success': bool, 'job_id': str}` or error message
-- Browse folder: `{'current_path': str, 'folders': [...], 'files': [...]}`
-- Queue status: `{'queue': [...], 'active': {...}, 'completed': [...]}`
-- Batch operations: `{'success': bool, 'moved': [...], 'errors': [...]}` or `{'deleted': [...], 'errors': [...]}`
-- Clear queue: `POST /api/queue/clear` - Removes all queued/completed items (preserves active)
-
-### Toast Notification & Modal Pattern
+### Custom Modals (No Browser Dialogs)
 ```javascript
-// Toast notifications for non-blocking feedback (preferred)
-showNotification('Message', 'Title', 'success', 3000);  // Auto-dismiss after 3s
-showNotification('Error occurred', 'Error', 'error');    // 5s default for errors
-showNotification('Warning', 'Warning', 'warning');       // 5s default
-showNotification('Info', 'Info', 'info', 5000);          // Blue info style
+// Toast notifications (preferred)
+showNotification('Message', 'Title', 'success', 3000);
 
-// Types: 'success' (green), 'error' (red), 'warning' (orange), 'info' (blue)
-// Notifications slide in from top-right, click to dismiss, auto-stack
+// Blocking modals for input
+const value = await showPrompt('Enter name');
+const ok = await showConfirm('Are you sure?');
 
-// Custom modal dialogs for user input/confirmation (blocking)
-const value = await showPrompt('Enter name');  // Text input
-const ok = await showConfirm('Are you sure?'); // Yes/No confirmation
-
-// Legacy showAlert() still works but now uses toast notifications
-await showAlert('Message');  // Maps to showNotification(..., 'info')
-
-// Never use: alert(), prompt(), confirm() - browser popups blocked
-// Modal HTML in templates/index.html with IDs: customDialog, notificationContainer
+// NEVER use: alert(), prompt(), confirm()
 ```
 
-## Running & Testing
+## Development Commands
 
-### Start Server
 ```powershell
-python app.py  # Starts on 0.0.0.0:4879
+python app.py                    # Start server on port 4879
+python -m py_compile <file>      # Check syntax
+# No hot reload - restart after Python changes
+# Frontend (HTML/CSS/JS) - just refresh browser
 ```
 
-### Dependencies
-**Zero pip dependencies** - uses only Python stdlib (`urllib`, `json`, `threading`). Flask must be installed separately: `pip install flask`
+## Key API Endpoints
 
-### File Organization
-```
-outputs/              # Generated images with subfolders (gitignored)
-├── subfolder1/      # User-created folders
-│   ├── *.png       # Images in subfolder
-├── *.png            # Root-level images
-├── metadata.json    # Flat array with 'subfolder' and 'path' fields
-└── queue_state.json # Persistent queue storage (queued, active, completed)
+- `POST /api/queue` - Add job (single generation)
+- `POST /api/queue/batch` - Add multiple jobs with template `[parameter]` replacement
+- `GET /api/queue` - Returns `{queue: [], active: {}, completed: []}`
+- `POST /api/queue/clear` - Clears queued items only (preserves completed)
+- `GET /api/browse?path=<subfolder>` - Browse folder with metadata
+- `POST /api/folder` - Create subfolder
+- `POST /api/move` / `POST /api/delete` - Batch operations with conflict resolution
+- `POST /api/ai/optimize` / `POST /api/ai/suggest` - AI prompt editing
+- `POST /api/ai/generate-parameters` - Generate CSV batch data with AI (accepts batch_params, varied_params for context)
+- `POST /api/comfyui/unload` - Free RAM/VRAM/cache (manual trigger)
 
-static/
-├── style.css        # Dark theme with custom modal styles
-└── script.js        # Vanilla JS: folder browser, selection mode, custom dialogs
+**Auto-unload:** Models unload automatically 10s after queue empties via ComfyUI `/free` endpoint.
 
-templates/
-└── index.html       # SPA with folder toolbar and custom modal HTML
+## Project-Specific Conventions
 
-Imaginer.json         # ComfyUI workflow with hardcoded node IDs
-pinokio.js, *.json   # Pinokio integration files
-```
+**Batch Generation:**  
+Template syntax: `[parameter_name]` replaced by CSV/JSON data. Three input modes: manual (comma-separated), paste (CSV/JSON text), upload (.csv/.json file). **Per-image parameters:** Checkboxes beside width/height/steps/seed/file_prefix/subfolder/nsfw enable per-image control via comma-separated values or CSV columns. AI-assisted parameter generation sends batch_params and varied_params for context-aware suggestions. All jobs queued with confirmation dialog showing editable file prefix and subfolder.
 
-## UI Features
+**Folder Operations:**  
+Breadcrumb navigation, selection mode with checkboxes for multi-select. Set output folder for generation target. All operations update `metadata.json` atomically.
 
-### Tab Navigation
-- Click tab buttons to switch between Single Generation, Batch Generation, and Image Browser
-- JavaScript `switchTab()` toggles `.active` class on buttons and content sections
-- Tab state managed by `data-tab` attributes matching section IDs
+**Image Viewer:**  
+Fullscreen with keyboard (←/→/A/D), touch swipe (50px threshold), auto-hiding controls (2s inactivity). **Zoom:** 100-500% via mouse wheel, +/-/0 keys, touch pinch, or buttons. Pan with click-drag when zoomed. **Autoplay:** Space key or button toggles, 0.5-60s configurable interval, pauses on manual nav. Import button loads params back to Single Generation tab. Delete shows custom confirm.
 
-### Queue Display
-- **Clear Queue Button**: Trash icon in queue header clears all queued/completed items
-- **Three-Section Layout**:
-  1. Queued items at top (newest first)
-  2. Active/generating item in middle
-  3. Completed items at bottom (with image thumbnails)
-- **Completed Items**: Show thumbnail images, click to navigate to Image Browser tab
-- Queue auto-refreshes every 1 second via polling
+**Tab System:**  
+JavaScript `switchTab()` toggles `.active` class. State in `data-tab` attributes. No routing - pure CSS visibility toggle.
 
-### Folder Browser System
-- Breadcrumb navigation with clickable path segments
-- **Selection Mode Toggle**: Click "Select" → enables multi-select with checkboxes
-  - Move/Delete buttons only visible in selection mode
-  - `selectedItems` Set tracks paths, `selectionMode` boolean controls UI state
-- Parent folder (`..`) shown when not at root
-- Folders sorted alphabetically, files by timestamp (newest first)
-- Auto-refresh after generation completes or file operations
-
-### Real-time Updates
-- Queue polls every 1s via `setInterval` → `/api/queue`
-- Folder browser refreshes on demand via `browseFolder(path)`
-- No WebSocket - simple HTTP polling pattern
-
-### Image Navigation
-- Click gallery item → opens modal with prev/next arrows
-- Click fullscreen button → browser fullscreen with auto-hiding controls
-- Keyboard: `←`/`→`/`A`/`D` navigate, `Esc` closes
-- Touch: Swipe left/right to navigate (50px threshold)
-- Counter shows position in top-right corner
-- Controls auto-hide after 2 seconds of mouse inactivity (fullscreen only)
-- Navigation wraps around (first ← goes to last)
-
-### Import & Delete Features
-- **Import**: Click "Import" in image detail view
-  - Loads all parameters (prompt, dimensions, steps, seed, NSFW, file prefix)
-  - Updates NSFW toggle button state via `updateNSFWButton()`
-  - Switches to Single Generation tab automatically
-  - Shows success notification
-  - Seed persists until manually cleared with ✕ button
-- **Delete**: Click "Delete Image" in viewer
-  - Shows custom confirm dialog (not browser confirm)
-  - Removes file via `/api/delete` endpoint
-  - Updates metadata and refreshes folder view
-  - Shows success/error notification
-
-### Batch Generation System
-- **Template Syntax**: Use `[parameter_name]` for values to replace (e.g., "A [color] dog")
-- **Three Input Methods**:
-  1. **Manual**: Parse template → auto-generate input fields → enter comma-separated values
-  2. **Paste Data**: Paste CSV or JSON directly into textarea
-  3. **File Upload**: Upload `.csv` or `.json` file with matching parameter names
-- **CSV Format**: First row = headers (parameter names), subsequent rows = values
-- **JSON Format**: Array of objects with parameter names as keys
-- **Shared Parameters**: Width, Height, Steps, Seed, NSFW, File Prefix, Subfolder apply to all
-- **Confirmation Dialog**: Shows editable file prefix and subfolder before queueing
-- **Backend**: `/api/queue/batch` accepts `{template, batch_data, shared_params}`
-- **Parameter Replacement**: `replaceParameters()` uses regex to replace `[key]` with values
+**Queue Counter:**  
+Blue badge shows pending count (`#queueCounter`), hidden when empty, updates on every poll.
 
 ## Common Modifications
 
-### Changing ComfyUI Server Address
-Update in **two places**:
-```python
-# app.py line ~30
-comfyui_client = ComfyUIClient(server_address="127.0.0.1:8188")
+**Add Parameter:**  
+1. HTML input in `templates/index.html`  
+2. Capture in `generateImage()` (script.js)  
+3. Add to job dict in `add_to_queue()` (app.py)  
+4. Pass to `comfyui_client.generate_image()`  
+5. Store in `add_metadata_entry()` signature  
+6. Display in `renderMetadata()` (script.js)  
+7. Include in `importImageData()`
 
-# comfyui_client.py line ~18 (default)
-def __init__(self, server_address: str = "127.0.0.1:8188"):
+**Change Server Address:**  
+Update in TWO places: `app.py` line ~37 (`ComfyUIClient(server_address=...)`), `comfyui_client.py` line ~18 (default param).
+
+**Add Folder Operation:**  
+Backend: New endpoint in `app.py` with metadata sync (`update_metadata_path`, `delete_metadata_entry`). Frontend: Button in toolbar, event in `initializeEventListeners()`, call `browseFolder(currentPath)` to refresh.
+
+## File Structure
+```
+├── app.py                 # Flask backend (queue, metadata, AI endpoints)
+├── comfyui_client.py      # Stdlib ComfyUI wrapper (urllib, json)
+├── ai_assistant.py        # AI integration (Ollama + Gemini)
+├── ai_instructions.py     # Preset AI prompts
+├── Imaginer.json          # ComfyUI workflow (hardcoded node IDs)
+├── templates/index.html   # SPA with tabs, modals, AI UI
+├── static/
+│   ├── script.js          # Vanilla JS (no frameworks)
+│   └── style.css          # Dark theme
+├── outputs/               # Gitignored - images, metadata, queue state
+├── BATCH_PARAMETERS.md    # Per-image parameter documentation
+├── FULLSCREEN_FEATURES.md # Zoom/autoplay documentation
+├── AI_FEATURES.md         # AI setup and usage guide
+└── *.json                 # Pinokio integration (install/start/reset)
 ```
 
-### Adding New Parameters
-1. Add input field to `templates/index.html` parameters grid
-2. Capture in `generateImage()` function (`script.js`)
-3. Add to Flask job dict in `add_to_queue()` (`app.py`)
-4. Pass to `comfyui_client.generate_image()` in `process_queue()`
-5. Store in `add_metadata_entry()` signature and update metadata schema
-6. Display in `renderMetadata()` function (image detail modal)
-7. Update `importImageData()` to include new parameter
-
-### Adding Folder Operations
-- Backend: Create endpoint in `app.py` following `/api/browse`, `/api/folder`, `/api/move`, `/api/delete` pattern
-- Use `get_unique_filename()` for conflict resolution, `update_metadata_path()` or `delete_metadata_entry()` to sync metadata
-- Frontend: Add button to toolbar in `templates/index.html`, wire event in `initializeEventListeners()`
-- Use `showPrompt()` for input dialogs, `showConfirm()` for confirmations, `showAlert()` for errors
-- Call `browseFolder(currentPath)` after operation to refresh view
-
-### Modifying Workflow Nodes
-Edit `comfyui_client.py` → `modify_workflow()` method. Node IDs are **not** sequential - they match exported ComfyUI workflow. Use exact IDs from `Imaginer.json`.
-
-## Development Notes
-
-- **No hot reload** - restart Flask server after backend changes
-- Frontend changes (HTML/CSS/JS) need browser refresh only
-- Queue processing runs in daemon thread - stops when Flask exits
-- Modal overlays use `.active` class toggle pattern
-- Fullscreen uses browser Fullscreen API (not just CSS fullscreen)
-- Mouse activity tracking only active during fullscreen mode
-- All HTML rendered server-side via Jinja2 templates
-
-## Key State Variables (script.js)
+## State Variables (script.js)
 
 ```javascript
-let currentImageIndex = 0;        // Current image in gallery
-let images = [];                  // Array of all images (for navigation)
-let currentImageData = null;      // Currently viewed image metadata
-let currentPath = '';             // Current folder path in browser
-let selectedItems = new Set();    // Set of selected file/folder paths
-let allItems = [];                // All items in current folder (for selection)
-let selectionMode = false;        // Toggle between browse/select modes
-let touchStartX = 0;              // Touch start position
-let touchEndX = 0;                // Touch end position
-let mouseActivityTimer = null;    // Timer for auto-hiding controls
-let isFullscreenActive = false;   // Fullscreen state flag
-let currentInputMethod = 'manual';// Batch input method: manual/textarea/file
-let parsedBatchData = [];         // Parsed CSV/JSON data for batch generation
+let currentImageIndex = 0;        // Gallery navigation
+let images = [];                  // All images in view
+let currentPath = '';             // Browser folder path
+let selectedItems = new Set();    // Multi-select paths
+let selectionMode = false;        // Browse vs select toggle
+let currentInputMethod = 'manual';// Batch: manual/textarea/file
+let parsedBatchData = [];         // Parsed CSV/JSON for batch
+let zoomLevel = 1;                // Fullscreen zoom (1-5x)
+let zoomPanX = 0, zoomPanY = 0;   // Pan offset when zoomed
+let isDragging = false;           // Mouse drag state
+let autoplayTimer = null;         // Autoplay setTimeout ID
+let isAutoplayActive = false;     // Autoplay on/off state
 ```
 
-## Pinokio Integration
+## Integration Notes
 
-Includes complete Pinokio package management:
-- `install.json` - Creates venv and installs Flask
-- `start.json` - Launches web server on port 4879
-- `update.json` - Updates Flask to latest version
-- `reset.json` - Removes venv and outputs directory
-- `open.json` - Opens web interface in browser
-- `pinokio.js` - Dynamic menu generation
+**Pinokio:** Scripts in root (`install.json`, `start.json`, `update.json`, `reset.json`) manage venv and Flask. `pinokio.js` generates dynamic menu.
+
+**ComfyUI Workflow:** Node structure in `Imaginer.json` must match IDs in `comfyui_client.py:modify_workflow()`. Changes require updating both files.
+
+**AI Models:** Ollama models discovered via `/api/tags`. Gemini models hardcoded (`gemini-2.5-flash`, `gemini-2.5-pro`). Frontend polls `/api/ai/models` on load.

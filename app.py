@@ -4,6 +4,7 @@ Flask Web UI for ComfyUI Workflow
 
 from flask import Flask, render_template, request, jsonify, send_file
 from comfyui_client import ComfyUIClient
+from ai_assistant import AIAssistant
 import os
 import json
 import time
@@ -27,9 +28,12 @@ completed_jobs = []  # Keep last 50 completed jobs
 MAX_COMPLETED_HISTORY = 50
 queue_lock = threading.Lock()
 active_generation = None
+last_queue_empty_time = None  # Track when queue became empty
+UNLOAD_DELAY_SECONDS = 10  # Wait 10 seconds after queue empty before unloading
 
-# Initialize ComfyUI client
+# Initialize ComfyUI client and AI assistant
 comfyui_client = ComfyUIClient(server_address="127.0.0.1:8188")
+ai_assistant = AIAssistant(ollama_url="http://127.0.0.1:11434")
 
 
 def get_next_filename(prefix: str, subfolder: str = "", extension: str = "png") -> tuple:
@@ -148,7 +152,7 @@ def add_metadata_entry(image_path, prompt, width, height, steps, seed, nsfw, fil
 
 def process_queue():
     """Background thread to process the generation queue"""
-    global active_generation, generation_queue, completed_jobs
+    global active_generation, generation_queue, completed_jobs, last_queue_empty_time
     
     while True:
         job = None
@@ -158,6 +162,7 @@ def process_queue():
                 job = generation_queue[-1]  # Take from end (oldest item)
                 active_generation = job
                 job['status'] = 'generating'
+                last_queue_empty_time = None  # Reset empty timer when processing
         
         if job:
             try:
@@ -184,7 +189,7 @@ def process_queue():
                     wait=True
                 )
                 
-                # Add metadata with actual seed used
+                # Add metadata with actual seed used - process sequentially before next job
                 metadata_entry = add_metadata_entry(
                     str(output_path),
                     job['prompt'],
@@ -209,21 +214,44 @@ def process_queue():
                 job['error'] = str(e)
                 job['failed_at'] = datetime.now().isoformat()
             
-            finally:
-                with queue_lock:
-                    if generation_queue and generation_queue[-1]['id'] == job['id']:
-                        generation_queue.pop()  # Remove from end
-                    
-                    # Add to completed jobs history
-                    completed_jobs.insert(0, job)
-                    if len(completed_jobs) > MAX_COMPLETED_HISTORY:
-                        completed_jobs.pop()
-                    
-                    active_generation = None
+            # Always process completion inside a critical section to ensure sequential batch processing
+            with queue_lock:
+                if generation_queue and generation_queue[-1]['id'] == job['id']:
+                    generation_queue.pop()  # Remove from end
                 
-                # Save queue state after job completes
-                save_queue_state()
+                # Add to completed jobs history
+                completed_jobs.insert(0, job)
+                if len(completed_jobs) > MAX_COMPLETED_HISTORY:
+                    completed_jobs.pop()
+                
+                active_generation = None
+            
+            # Save queue state after job completes
+            save_queue_state()
         else:
+            # Queue is empty - check if we should unload models
+            with queue_lock:
+                is_queue_empty = len(generation_queue) == 0 and active_generation is None
+            
+            if is_queue_empty:
+                current_time = time.time()
+                
+                if last_queue_empty_time is None:
+                    last_queue_empty_time = current_time
+                    print(f"Queue empty. Will unload models in {UNLOAD_DELAY_SECONDS} seconds if queue stays empty.")
+                elif current_time - last_queue_empty_time >= UNLOAD_DELAY_SECONDS:
+                    # Queue has been empty for the delay period - unload models
+                    print("Queue empty for delay period. Unloading models and clearing memory...")
+                    try:
+                        comfyui_client.unload_models()
+                        comfyui_client.clear_cache()
+                        print("✓ Models unloaded, RAM/VRAM/cache cleared")
+                    except Exception as e:
+                        print(f"Error unloading models: {e}")
+                    
+                    # Reset timer so we don't keep trying to unload
+                    last_queue_empty_time = current_time + 3600  # Wait 1 hour before trying again
+            
             time.sleep(0.5)
 
 
@@ -287,21 +315,34 @@ def add_batch_to_queue():
     
     # Generate prompts and queue each job
     for params in batch_data:
-        # Replace parameters in template
-        prompt = template
+        # Separate prompt parameters from override parameters
+        prompt_params = {}
+        override_params = {}
+        
         for key, value in params.items():
+            # Check if this is a known override parameter
+            if key in ['width', 'height', 'steps', 'seed', 'file_prefix', 'subfolder', 'nsfw']:
+                override_params[key] = value
+            else:
+                # It's a prompt template parameter
+                prompt_params[key] = value
+        
+        # Replace parameters in template with prompt parameters only
+        prompt = template
+        for key, value in prompt_params.items():
             prompt = prompt.replace(f'[{key}]', str(value))
         
+        # Build job with per-image overrides or shared params
         job = {
             'id': str(uuid.uuid4()),
             'prompt': prompt,
-            'width': int(shared_params.get('width', 1024)),
-            'height': int(shared_params.get('height', 1024)),
-            'steps': int(shared_params.get('steps', 4)),
-            'seed': shared_params.get('seed'),  # Use shared seed or None for random per image
-            'nsfw': shared_params.get('nsfw', False),
-            'file_prefix': shared_params.get('file_prefix', 'batch'),
-            'subfolder': shared_params.get('subfolder', ''),
+            'width': int(override_params.get('width', shared_params.get('width', 1024))),
+            'height': int(override_params.get('height', shared_params.get('height', 1024))),
+            'steps': int(override_params.get('steps', shared_params.get('steps', 4))),
+            'seed': override_params.get('seed', shared_params.get('seed')),  # Per-image or shared seed
+            'nsfw': override_params.get('nsfw', shared_params.get('nsfw', False)),
+            'file_prefix': override_params.get('file_prefix', shared_params.get('file_prefix', 'batch')),
+            'subfolder': override_params.get('subfolder', shared_params.get('subfolder', '')),
             'status': 'queued',
             'added_at': datetime.now().isoformat()
         }
@@ -345,10 +386,9 @@ def cancel_job(job_id):
 
 @app.route('/api/queue/clear', methods=['POST'])
 def clear_queue():
-    """Clear all queued and completed jobs (not the active one)"""
+    """Clear only queued jobs (not active or completed ones)"""
     with queue_lock:
         generation_queue.clear()
-        completed_jobs.clear()
     
     save_queue_state()
     return jsonify({'success': True})
@@ -526,6 +566,123 @@ def serve_image(filepath):
     if file_path.exists() and file_path.is_file():
         return send_file(file_path)
     return "Image not found", 404
+
+
+# AI Assistant Endpoints
+
+@app.route('/api/ai/models', methods=['GET'])
+def get_ai_models():
+    """Get available AI models from Ollama and Gemini"""
+    try:
+        models = ai_assistant.get_available_models()
+        return jsonify({
+            'success': True,
+            'models': models
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/ai/optimize', methods=['POST'])
+def optimize_prompt():
+    """Optimize a prompt using AI"""
+    data = request.json
+    prompt = data.get('prompt', '').strip()
+    model = data.get('model', 'llama2')
+    provider = data.get('provider', 'ollama')
+    
+    if not prompt:
+        return jsonify({'success': False, 'error': 'Prompt required'}), 400
+    
+    result = ai_assistant.optimize_prompt(prompt, model, provider)
+    return jsonify(result)
+
+
+@app.route('/api/ai/suggest', methods=['POST'])
+def suggest_prompt_edit():
+    """Apply a user suggestion to edit a prompt"""
+    data = request.json
+    prompt = data.get('prompt', '').strip()
+    suggestion = data.get('suggestion', '').strip()
+    model = data.get('model', 'llama2')
+    provider = data.get('provider', 'ollama')
+    
+    if not prompt or not suggestion:
+        return jsonify({'success': False, 'error': 'Prompt and suggestion required'}), 400
+    
+    result = ai_assistant.suggest_prompt_edit(prompt, suggestion, model, provider)
+    return jsonify(result)
+
+
+@app.route('/api/ai/generate-parameters', methods=['POST'])
+def generate_batch_parameters():
+    """Generate batch parameters using AI"""
+    data = request.json
+    template = data.get('template', '').strip()
+    count = data.get('count', 5)
+    context = data.get('context', '').strip()
+    context_type = data.get('context_type', 'full')  # 'full', 'parameters', 'custom'
+    model = data.get('model', 'llama2')
+    provider = data.get('provider', 'ollama')
+    batch_params = data.get('batch_params', {})
+    varied_params = data.get('varied_params', [])
+    
+    if not template:
+        return jsonify({'success': False, 'error': 'Template required'}), 400
+    
+    if count < 1 or count > 100:
+        return jsonify({'success': False, 'error': 'Count must be between 1 and 100'}), 400
+    
+    result = ai_assistant.generate_batch_parameters(
+        template, count, context, context_type, model, provider, batch_params, varied_params
+    )
+    return jsonify(result)
+
+
+# ComfyUI Memory Management Endpoints
+
+@app.route('/api/comfyui/unload', methods=['POST'])
+def unload_comfyui_models():
+    """Manually unload all ComfyUI models and clear memory"""
+    try:
+        comfyui_client.unload_models()
+        comfyui_client.clear_cache()
+        return jsonify({
+            'success': True,
+            'message': 'Models unloaded and memory cleared'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/comfyui/status', methods=['GET'])
+def get_comfyui_status():
+    """Get ComfyUI memory status"""
+    global last_queue_empty_time, UNLOAD_DELAY_SECONDS
+    
+    with queue_lock:
+        is_queue_empty = len(generation_queue) == 0 and active_generation is None
+    
+    status = {
+        'queue_empty': is_queue_empty,
+        'auto_unload_enabled': True,
+        'unload_delay_seconds': UNLOAD_DELAY_SECONDS
+    }
+    
+    if is_queue_empty and last_queue_empty_time is not None:
+        elapsed = time.time() - last_queue_empty_time
+        if elapsed < UNLOAD_DELAY_SECONDS:
+            status['unload_in_seconds'] = int(UNLOAD_DELAY_SECONDS - elapsed)
+        else:
+            status['models_unloaded'] = True
+    
+    return jsonify(status)
 
 
 if __name__ == '__main__':

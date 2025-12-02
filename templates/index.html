@@ -11,8 +11,15 @@
         <!-- Collapsible Queue Sidebar -->
         <aside class="queue-sidebar" id="queueSidebar">
             <div class="queue-header">
-                <h2>Queue</h2>
+                <h2>Queue <span id="queueCounter" class="queue-counter">0</span></h2>
                 <div class="queue-header-actions">
+                    <button class="btn-icon" id="unloadModelsBtn" title="Unload ComfyUI Models">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                            <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                            <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                        </svg>
+                    </button>
                     <button class="btn-icon" id="clearQueueBtn" title="Clear Queue">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="3 6 5 6 21 6"></polyline>
@@ -71,6 +78,13 @@
                                 placeholder="Enter your prompt here..."
                                 class="form-control"
                             ></textarea>
+                            <button class="btn btn-sm" id="editPromptWithAI" style="margin-top: 0.5rem;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <polyline points="12 6 12 12 16 14"></polyline>
+                                </svg>
+                                <span>✨ Edit with AI</span>
+                            </button>
                         </div>
 
                         <div class="parameters-grid">
@@ -186,14 +200,28 @@
                                 placeholder="Enter prompt with [parameters] in brackets, e.g., A girl in a [dress_color] dress with [accessory]"
                                 class="form-control"
                             ></textarea>
-                            <small style="color: var(--text-muted); display: block; margin-top: 0.5rem;">
-                                Use [parameter_name] for values to be replaced. Example: "A [animal] in a [location]"
-                            </small>
+                            <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem; align-items: flex-start;">
+                                <small style="color: var(--text-muted); flex: 1;">
+                                    Use [parameter_name] for values to be replaced. Example: "A [animal] in a [location]"
+                                </small>
+                                <button class="btn btn-sm" id="editBatchPromptWithAI">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <circle cx="12" cy="12" r="10"></circle>
+                                        <polyline points="12 6 12 12 16 14"></polyline>
+                                    </svg>
+                                    <span>✨ Edit with AI</span>
+                                </button>
+                            </div>
                         </div>
 
                         <div class="parameters-grid">
                             <div class="form-group">
-                                <label for="batchWidth">Width</label>
+                                <label for="batchWidth">
+                                    <label class="checkbox-label" style="cursor: pointer; display: inline-flex; align-items: center; gap: 0.25rem; margin-bottom: 0.25rem;">
+                                        <input type="checkbox" id="batchWidthParam" class="batch-param-checkbox" style="margin-right: 0.25rem;">
+                                        <span>Width</span>
+                                    </label>
+                                </label>
                                 <input 
                                     type="number" 
                                     id="batchWidth" 
@@ -203,10 +231,22 @@
                                     step="64"
                                     class="form-control"
                                 >
+                                <input 
+                                    type="text" 
+                                    id="batchWidthParamValue" 
+                                    placeholder="e.g., 512, 768, 1024 or [width_col]"
+                                    class="form-control batch-param-input"
+                                    style="display: none; margin-top: 0.5rem;"
+                                >
                             </div>
 
                             <div class="form-group">
-                                <label for="batchHeight">Height</label>
+                                <label for="batchHeight">
+                                    <label class="checkbox-label" style="cursor: pointer; display: inline-flex; align-items: center; gap: 0.25rem; margin-bottom: 0.25rem;">
+                                        <input type="checkbox" id="batchHeightParam" class="batch-param-checkbox" style="margin-right: 0.25rem;">
+                                        <span>Height</span>
+                                    </label>
+                                </label>
                                 <input 
                                     type="number" 
                                     id="batchHeight" 
@@ -216,10 +256,22 @@
                                     step="64"
                                     class="form-control"
                                 >
+                                <input 
+                                    type="text" 
+                                    id="batchHeightParamValue" 
+                                    placeholder="e.g., 512, 768, 1024 or [height_col]"
+                                    class="form-control batch-param-input"
+                                    style="display: none; margin-top: 0.5rem;"
+                                >
                             </div>
 
                             <div class="form-group">
-                                <label for="batchSteps">Steps</label>
+                                <label for="batchSteps">
+                                    <label class="checkbox-label" style="cursor: pointer; display: inline-flex; align-items: center; gap: 0.25rem; margin-bottom: 0.25rem;">
+                                        <input type="checkbox" id="batchStepsParam" class="batch-param-checkbox" style="margin-right: 0.25rem;">
+                                        <span>Steps</span>
+                                    </label>
+                                </label>
                                 <input 
                                     type="number" 
                                     id="batchSteps" 
@@ -228,10 +280,22 @@
                                     max="100"
                                     class="form-control"
                                 >
+                                <input 
+                                    type="text" 
+                                    id="batchStepsParamValue" 
+                                    placeholder="e.g., 4, 8, 12 or [steps_col]"
+                                    class="form-control batch-param-input"
+                                    style="display: none; margin-top: 0.5rem;"
+                                >
                             </div>
 
                             <div class="form-group">
-                                <label for="batchSeed">Seed (optional)</label>
+                                <label for="batchSeed">
+                                    <label class="checkbox-label" style="cursor: pointer; display: inline-flex; align-items: center; gap: 0.25rem; margin-bottom: 0.25rem;">
+                                        <input type="checkbox" id="batchSeedParam" class="batch-param-checkbox" style="margin-right: 0.25rem;">
+                                        <span>Seed (optional)</span>
+                                    </label>
+                                </label>
                                 <div class="input-with-clear">
                                     <input 
                                         type="number" 
@@ -246,10 +310,22 @@
                                         </svg>
                                     </button>
                                 </div>
+                                <input 
+                                    type="text" 
+                                    id="batchSeedParamValue" 
+                                    placeholder="e.g., 123, 456, 789 or [seed_col]"
+                                    class="form-control batch-param-input"
+                                    style="display: none; margin-top: 0.5rem;"
+                                >
                             </div>
 
                             <div class="form-group">
-                                <label for="batchFilePrefix">File Prefix</label>
+                                <label for="batchFilePrefix">
+                                    <label class="checkbox-label" style="cursor: pointer; display: inline-flex; align-items: center; gap: 0.25rem; margin-bottom: 0.25rem;">
+                                        <input type="checkbox" id="batchFilePrefixParam" class="batch-param-checkbox" style="margin-right: 0.25rem;">
+                                        <span>File Prefix</span>
+                                    </label>
+                                </label>
                                 <input 
                                     type="text" 
                                     id="batchFilePrefix" 
@@ -257,10 +333,22 @@
                                     value="batch"
                                     class="form-control"
                                 >
+                                <input 
+                                    type="text" 
+                                    id="batchFilePrefixParamValue" 
+                                    placeholder="e.g., image1, image2 or [prefix_col]"
+                                    class="form-control batch-param-input"
+                                    style="display: none; margin-top: 0.5rem;"
+                                >
                             </div>
 
                             <div class="form-group">
-                                <label for="batchSubfolder">Output Folder (optional)</label>
+                                <label for="batchSubfolder">
+                                    <label class="checkbox-label" style="cursor: pointer; display: inline-flex; align-items: center; gap: 0.25rem; margin-bottom: 0.25rem;">
+                                        <input type="checkbox" id="batchSubfolderParam" class="batch-param-checkbox" style="margin-right: 0.25rem;">
+                                        <span>Output Folder (optional)</span>
+                                    </label>
+                                </label>
                                 <input 
                                     type="text" 
                                     id="batchSubfolder" 
@@ -268,10 +356,22 @@
                                     class="form-control"
                                     readonly
                                 >
+                                <input 
+                                    type="text" 
+                                    id="batchSubfolderParamValue" 
+                                    placeholder="e.g., folder1, folder2 or [folder_col]"
+                                    class="form-control batch-param-input"
+                                    style="display: none; margin-top: 0.5rem;"
+                                >
                             </div>
 
                             <div class="form-group nsfw-group">
-                                <label>&nbsp;</label>
+                                <label>
+                                    <label class="checkbox-label" style="cursor: pointer; display: inline-flex; align-items: center; gap: 0.25rem; margin-bottom: 0.25rem;">
+                                        <input type="checkbox" id="batchNsfwParam" class="batch-param-checkbox" style="margin-right: 0.25rem;">
+                                        <span>&nbsp;</span>
+                                    </label>
+                                </label>
                                 <label class="checkbox-label" id="batchNsfwToggle">
                                     <input 
                                         type="checkbox" 
@@ -284,6 +384,13 @@
                                     </svg>
                                     <span>NSFW Mode</span>
                                 </label>
+                                <input 
+                                    type="text" 
+                                    id="batchNsfwParamValue" 
+                                    placeholder="e.g., true, false, true or [nsfw_col]"
+                                    class="form-control batch-param-input"
+                                    style="display: none; margin-top: 0.5rem;"
+                                >
                             </div>
                         </div>
 
@@ -314,9 +421,18 @@
                                 <div id="manualParametersContainer">
                                     <!-- Will be dynamically populated based on template -->
                                 </div>
-                                <button class="btn btn-secondary" id="parseTemplateBtn" style="margin-top: 1rem;">
-                                    Parse Template Parameters
-                                </button>
+                                <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                                    <button class="btn btn-secondary" id="parseTemplateBtn" style="flex: 1;">
+                                        Parse Template Parameters
+                                    </button>
+                                    <button class="btn btn-primary" id="aiGenerateParametersBtn" style="flex: 1;">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <circle cx="12" cy="12" r="10"></circle>
+                                            <polyline points="12 6 12 12 16 14"></polyline>
+                                        </svg>
+                                        <span>🤖 AI Generate Values</span>
+                                    </button>
+                                </div>
                             </div>
 
                             <!-- Paste Data -->
@@ -346,7 +462,17 @@
 
                         <!-- Preview Section -->
                         <div class="form-group" style="margin-top: 2rem;">
-                            <label>Batch Preview</label>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                <label>Batch Preview</label>
+                                <button class="btn btn-sm" id="downloadCSVBtn" style="display: none;">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                        <polyline points="7 10 12 15 17 10"></polyline>
+                                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                                    </svg>
+                                    <span>Download CSV</span>
+                                </button>
+                            </div>
                             <div id="batchPreview" style="background: var(--bg-secondary); padding: 1rem; border-radius: 8px; max-height: 300px; overflow-y: auto;">
                                 <p style="color: var(--text-muted); text-align: center;">Configure parameters and click "Preview Batch" to see generated prompts</p>
                             </div>
@@ -522,6 +648,49 @@
     <div class="fullscreen-viewer" id="fullscreenViewer">
         <div class="fullscreen-controls" id="fullscreenControls">
             <div class="fullscreen-counter" id="fullscreenCounter">0 / 0</div>
+            
+            <!-- Zoom Controls -->
+            <div class="fullscreen-zoom-controls">
+                <button class="fullscreen-control-btn" id="fullscreenZoomOut" title="Zoom Out (-)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        <line x1="8" y1="11" x2="14" y2="11"></line>
+                    </svg>
+                </button>
+                <span class="fullscreen-zoom-level" id="fullscreenZoomLevel">100%</span>
+                <button class="fullscreen-control-btn" id="fullscreenZoomIn" title="Zoom In (+)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        <line x1="11" y1="8" x2="11" y2="14"></line>
+                        <line x1="8" y1="11" x2="14" y2="11"></line>
+                    </svg>
+                </button>
+                <button class="fullscreen-control-btn" id="fullscreenZoomReset" title="Reset Zoom (0)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="8" x2="12" y2="16"></line>
+                        <line x1="8" y1="12" x2="16" y2="12"></line>
+                    </svg>
+                </button>
+            </div>
+            
+            <!-- Autoplay Controls -->
+            <div class="fullscreen-autoplay-controls">
+                <button class="fullscreen-control-btn" id="fullscreenPlayPause" title="Play/Pause (Space)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="play-icon">
+                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                    </svg>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="pause-icon" style="display: none;">
+                        <rect x="6" y="4" width="4" height="16"></rect>
+                        <rect x="14" y="4" width="4" height="16"></rect>
+                    </svg>
+                </button>
+                <input type="number" id="fullscreenAutoplayInterval" class="fullscreen-interval-input" value="3" min="1" max="60" step="0.5" title="Autoplay interval (seconds)">
+                <span style="color: white; font-size: 0.9rem;">s</span>
+            </div>
+            
             <button class="fullscreen-close" id="fullscreenClose">
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -539,11 +708,217 @@
                 </svg>
             </button>
         </div>
-        <img id="fullscreenImage" alt="Fullscreen Image">
+        <div class="fullscreen-image-container" id="fullscreenImageContainer">
+            <img id="fullscreenImage" alt="Fullscreen Image">
+        </div>
     </div>
 
     <!-- Toast Notifications Container -->
     <div class="notification-container" id="notificationContainer"></div>
+
+    <!-- AI Edit Modal -->
+    <div class="custom-modal" id="aiEditModal" style="display: none;">
+        <div class="custom-modal-overlay"></div>
+        <div class="custom-modal-content" style="max-width: 700px; max-height: 90vh; overflow-y: auto;">
+            <h3>✨ AI Prompt Editor</h3>
+            
+            <!-- Model Selection -->
+            <div class="form-group" style="margin-bottom: 1.5rem;">
+                <label for="aiProvider">AI Provider</label>
+                <select id="aiProvider" class="form-control" style="margin-bottom: 0.5rem;">
+                    <option value="ollama">Ollama (Local)</option>
+                    <option value="gemini">Google Gemini</option>
+                </select>
+                
+                <label for="aiModel">Model</label>
+                <select id="aiModel" class="form-control">
+                    <option value="">Loading models...</option>
+                </select>
+                <small style="color: var(--text-muted); display: block; margin-top: 0.25rem;">
+                    <span id="modelInfo">Select a provider to load models</span>
+                </small>
+            </div>
+            
+            <!-- Current Prompt -->
+            <div class="form-group" style="margin-bottom: 1.5rem;">
+                <label for="aiCurrentPrompt">Current Prompt</label>
+                <textarea 
+                    id="aiCurrentPrompt" 
+                    rows="4" 
+                    class="form-control"
+                    placeholder="Your prompt will appear here..."
+                    readonly
+                    style="background: var(--bg-secondary); cursor: default;"
+                ></textarea>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem;">
+                <button class="btn btn-primary" id="aiOptimizeBtn" style="flex: 1;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                    Optimize Prompt
+                </button>
+                <button class="btn btn-secondary" id="aiCopyPromptBtn" title="Copy to clipboard">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                </button>
+            </div>
+            
+            <!-- Suggestion Input -->
+            <div class="form-group" style="margin-bottom: 1.5rem;">
+                <label for="aiSuggestion">Custom Suggestion (optional)</label>
+                <div style="display: flex; gap: 0.5rem;">
+                    <input 
+                        type="text" 
+                        id="aiSuggestion" 
+                        class="form-control" 
+                        placeholder="e.g., make it more dramatic, add sunset lighting..."
+                        style="flex: 1;"
+                    >
+                    <button class="btn btn-primary" id="aiApplySuggestionBtn">
+                        Apply
+                    </button>
+                </div>
+                <small style="color: var(--text-muted); display: block; margin-top: 0.25rem;">
+                    Enter specific changes you want to make to the prompt
+                </small>
+            </div>
+            
+            <!-- Result Area -->
+            <div class="form-group" style="margin-bottom: 1.5rem;">
+                <label for="aiResult">AI Result</label>
+                <textarea 
+                    id="aiResult" 
+                    rows="6" 
+                    class="form-control"
+                    placeholder="AI-generated prompt will appear here..."
+                ></textarea>
+                <div id="aiLoadingIndicator" style="display: none; margin-top: 0.5rem; color: var(--primary);">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 1s linear infinite; display: inline-block;">
+                        <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
+                        <path d="M12 2 A10 10 0 0 1 22 12" stroke-opacity="0.75"></path>
+                    </svg>
+                    <span style="margin-left: 0.5rem;">AI is thinking...</span>
+                </div>
+            </div>
+            
+            <!-- Modal Actions -->
+            <div class="custom-modal-actions">
+                <button class="btn btn-secondary" id="aiModalCancelBtn">Cancel</button>
+                <button class="btn btn-primary" id="aiModalUseBtn">Use This Prompt</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Parameter Generator Modal -->
+    <div class="custom-modal" id="aiParameterModal" style="display: none;">
+        <div class="custom-modal-overlay"></div>
+        <div class="custom-modal-content" style="max-width: 700px; max-height: 90vh; overflow-y: auto;">
+            <h3>🤖 AI Parameter Generator</h3>
+            
+            <!-- Model Selection -->
+            <div class="form-group" style="margin-bottom: 1.5rem;">
+                <label for="aiParamProvider">AI Provider</label>
+                <select id="aiParamProvider" class="form-control" style="margin-bottom: 0.5rem;">
+                    <option value="ollama">Ollama (Local)</option>
+                    <option value="gemini">Google Gemini</option>
+                </select>
+                
+                <label for="aiParamModel">Model</label>
+                <select id="aiParamModel" class="form-control">
+                    <option value="">Loading models...</option>
+                </select>
+            </div>
+            
+            <!-- Count -->
+            <div class="form-group" style="margin-bottom: 1.5rem;">
+                <label for="aiParamCount">Number of Variations</label>
+                <input 
+                    type="number" 
+                    id="aiParamCount" 
+                    value="5" 
+                    min="1" 
+                    max="50"
+                    class="form-control"
+                >
+                <small style="color: var(--text-muted); display: block; margin-top: 0.25rem;">
+                    Generate 1-50 parameter variations
+                </small>
+            </div>
+            
+            <!-- Context Type -->
+            <div class="form-group" style="margin-bottom: 1.5rem;">
+                <label>Context to Send</label>
+                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                    <label class="checkbox-label" style="cursor: pointer;">
+                        <input type="radio" name="aiContextType" value="full" checked style="margin-right: 0.5rem;">
+                        <span>Template + Custom Context (below)</span>
+                    </label>
+                    <label class="checkbox-label" style="cursor: pointer;">
+                        <input type="radio" name="aiContextType" value="parameters" style="margin-right: 0.5rem;">
+                        <span>Parameters Only + Custom Context</span>
+                    </label>
+                    <label class="checkbox-label" style="cursor: pointer;">
+                        <input type="radio" name="aiContextType" value="custom" style="margin-right: 0.5rem;">
+                        <span>Custom Context Only</span>
+                    </label>
+                </div>
+            </div>
+            
+            <!-- Custom Context -->
+            <div class="form-group" style="margin-bottom: 1.5rem;">
+                <label for="aiParamContext">Custom Context / Instructions</label>
+                <textarea 
+                    id="aiParamContext" 
+                    rows="4" 
+                    class="form-control"
+                    placeholder="e.g., Focus on fantasy themes, Use vibrant colors, Include various times of day..."
+                ></textarea>
+                <small style="color: var(--text-muted); display: block; margin-top: 0.25rem;">
+                    Provide additional context or instructions for parameter generation
+                </small>
+            </div>
+            
+            <!-- Generate Button -->
+            <button class="btn btn-primary btn-large" id="aiGenerateParamsBtn" style="width: 100%; margin-bottom: 1rem;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                Generate Parameters
+            </button>
+            
+            <!-- Result Area -->
+            <div class="form-group" style="margin-bottom: 1.5rem;">
+                <label for="aiParamResult">Generated CSV Data</label>
+                <textarea 
+                    id="aiParamResult" 
+                    rows="10" 
+                    class="form-control"
+                    placeholder="Generated CSV data will appear here..."
+                    style="font-family: monospace; font-size: 0.9rem;"
+                ></textarea>
+                <div id="aiParamLoadingIndicator" style="display: none; margin-top: 0.5rem; color: var(--primary);">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 1s linear infinite; display: inline-block;">
+                        <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
+                        <path d="M12 2 A10 10 0 0 1 22 12" stroke-opacity="0.75"></path>
+                    </svg>
+                    <span style="margin-left: 0.5rem;">AI is generating parameters...</span>
+                </div>
+            </div>
+            
+            <!-- Modal Actions -->
+            <div class="custom-modal-actions">
+                <button class="btn btn-secondary" id="aiParamModalCancelBtn">Cancel</button>
+                <button class="btn btn-primary" id="aiParamModalUseBtn">Use This Data</button>
+            </div>
+        </div>
+    </div>
 
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>

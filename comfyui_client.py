@@ -254,6 +254,79 @@ class ComfyUIClient:
                         print(f"Image generated: {filename}")
         
         return None
+    
+    def unload_models(self) -> bool:
+        """
+        Unload all models from memory (RAM/VRAM)
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        url = f"http://{self.server_address}/free"
+        
+        data = json.dumps({"unload_models": True, "free_memory": True}).encode('utf-8')
+        
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={'Content-Type': 'application/json'},
+            method='POST'
+        )
+        
+        try:
+            with urllib.request.urlopen(req) as response:
+                result = json.loads(response.read())
+                print(f"Models unloaded and memory freed")
+                return True
+        except urllib.error.URLError as e:
+            print(f"Error unloading models: {e}")
+            return False
+    
+    def clear_cache(self) -> bool:
+        """
+        Clear cache and garbage collect
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        url = f"http://{self.server_address}/free"
+        
+        data = json.dumps({"unload_models": False, "free_memory": True}).encode('utf-8')
+        
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={'Content-Type': 'application/json'},
+            method='POST'
+        )
+        
+        try:
+            with urllib.request.urlopen(req) as response:
+                result = json.loads(response.read())
+                print(f"Cache cleared")
+                return True
+        except urllib.error.URLError as e:
+            print(f"Error clearing cache: {e}")
+            return False
+    
+    def interrupt_processing(self) -> bool:
+        """
+        Interrupt current processing (emergency stop)
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        url = f"http://{self.server_address}/interrupt"
+        
+        req = urllib.request.Request(url, method='POST')
+        
+        try:
+            with urllib.request.urlopen(req) as response:
+                print(f"Processing interrupted")
+                return True
+        except urllib.error.URLError as e:
+            print(f"Error interrupting: {e}")
+            return False
 
 
 def main():

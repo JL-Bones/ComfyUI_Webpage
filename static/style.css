@@ -62,6 +62,21 @@ body {
 .queue-header h2 {
     font-size: 1.25rem;
     font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.queue-counter {
+    display: inline-block;
+    background: var(--accent-primary);
+    color: white;
+    font-size: 0.875rem;
+    font-weight: 600;
+    padding: 0.25rem 0.625rem;
+    border-radius: 12px;
+    min-width: 24px;
+    text-align: center;
 }
 
 .queue-header-actions {
@@ -930,11 +945,16 @@ textarea.form-control {
     z-index: 9999;
     align-items: center;
     justify-content: center;
-    cursor: none;
+    cursor: default;
 }
 
 .fullscreen-viewer.active {
     display: flex;
+}
+
+/* Hide cursor only when controls are hidden (after inactivity) */
+.fullscreen-viewer:has(.fullscreen-controls:not(.visible)) {
+    cursor: none;
 }
 
 .fullscreen-viewer img {
@@ -1025,6 +1045,104 @@ textarea.form-control {
     border-radius: 8px;
     font-size: 1rem;
     font-weight: 600;
+}
+
+.fullscreen-image-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    position: relative;
+}
+
+.fullscreen-image-container img {
+    transition: transform 0.2s ease-out;
+    transform-origin: center center;
+}
+
+/* Zoom Controls */
+.fullscreen-zoom-controls {
+    position: absolute;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.8);
+    border-radius: 12px;
+    padding: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.fullscreen-control-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: white;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.fullscreen-control-btn:hover {
+    background: rgba(99, 102, 241, 0.8);
+    border-color: rgba(99, 102, 241, 1);
+    transform: scale(1.05);
+}
+
+.fullscreen-zoom-level {
+    color: white;
+    font-size: 0.9rem;
+    font-weight: 600;
+    min-width: 50px;
+    text-align: center;
+}
+
+/* Autoplay Controls */
+.fullscreen-autoplay-controls {
+    position: absolute;
+    bottom: 2rem;
+    right: 2rem;
+    background: rgba(0, 0, 0, 0.8);
+    border-radius: 12px;
+    padding: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.fullscreen-interval-input {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: white;
+    width: 60px;
+    padding: 0.5rem;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+.fullscreen-interval-input:focus {
+    outline: none;
+    border-color: rgba(99, 102, 241, 1);
+    background: rgba(255, 255, 255, 0.15);
+}
+
+/* Remove spinner arrows from number input */
+.fullscreen-interval-input::-webkit-outer-spin-button,
+.fullscreen-interval-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.fullscreen-interval-input[type=number] {
+    -moz-appearance: textfield;
 }
 
 .image-actions {
@@ -1282,5 +1400,15 @@ textarea.form-control {
     
     .metadata-grid {
         grid-template-columns: 1fr;
+    }
+}
+
+/* AI Assistant Spinner Animation */
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
     }
 }

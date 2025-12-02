@@ -1,50 +1,35 @@
 # ComfyUI Web Interface
 
-Flask-based web UI for ComfyUI image generation with tab-based interface, queue management with history, real-time updates, and metadata tracking.
+Flask-based web UI for ComfyUI with AI-assisted prompting, batch generation, queue management, and file organization.
 
 ## Features
 
-- 🎨 Clean, dark-themed web interface with tab navigation
-- 📋 Persistent queue system shared across all users/browsers (last 50 completed)
-- 🔄 Background processing with LIFO display / FIFO execution
-- 🖼️ Image gallery with fullscreen viewer and keyboard/touch navigation
-- 📁 Hierarchical folder management (browse, create, move, delete)
-- 🎯 Selection mode for batch operations (multi-select files/folders)
-- 📦 Batch generation with template-based parameter replacement
-- 📊 CSV/JSON import for batch parameters (manual, paste, or upload)
-- 💾 Metadata tracking (prompts, dimensions, seeds, NSFW mode, file prefix)
-- 🔄 Auto-hiding controls with mouse activity detection
-- ⌨️ Keyboard navigation (arrows, A/D keys, Escape)
-- 📱 Touch/swipe support for mobile devices
-- 🗑️ Delete images with confirmation dialog
-- 🎭 Custom modal dialogs for confirmations (no browser popups)
-- 🔔 Toast notification system (non-intrusive, auto-dismissing)
-- 🧹 Clear queue button with confirmation
-- 🔒 Git ignore and AI crawler protection
+- 🎨 **Dark-themed interface** with tab navigation (Single/Batch/Browser)
+- 🤖 **AI assistance** - Prompt optimization with Ollama or Gemini
+- 📋 **Persistent queue** - Shared across users, survives restarts, shows count badge
+- 📦 **Batch generation** - Template syntax `[parameter]` with CSV/JSON import
+- 📁 **Folder management** - Create, browse, move, delete with breadcrumbs
+- 🖼️ **Image viewer** - Fullscreen, keyboard nav (←/→/A/D), touch swipe
+- 💾 **Metadata tracking** - All generation params saved automatically
+- 🧠 **Auto-unload models** - Frees RAM/VRAM 10s after queue empties
+- 🔔 **Toast notifications** - Custom modals, no browser dialogs
+
+See [AI_FEATURES.md](AI_FEATURES.md) for AI setup and usage.
 
 ## Requirements
 
-- Python 3.7+
-- Flask (`pip install flask`)
+- Python 3.7+ and Flask (`pip install flask`)
 - ComfyUI server running on `http://127.0.0.1:8188`
+- Optional: Ollama or Gemini API key for AI features (see [AI_FEATURES.md](AI_FEATURES.md))
 
 ## Quick Start
 
-1. **Install dependencies:**
-   ```powershell
-   pip install flask
-   ```
+```powershell
+pip install flask
+python app.py  # Starts on http://localhost:4879
+```
 
-2. **Make sure ComfyUI is running:**
-   - ComfyUI must be accessible at `http://127.0.0.1:8188`
-
-3. **Start the web server:**
-   ```powershell
-   python app.py
-   ```
-
-4. **Open in browser:**
-   - Navigate to `http://localhost:4879`
+ComfyUI must be running on `http://127.0.0.1:8188`
 
 ## Usage
 
@@ -118,14 +103,31 @@ Three ways to provide parameter values:
 - NSFW mode toggle
 - Output folder (optional)
 
-**4. Preview and Generate**
+**4. Per-Image Parameter Control (Advanced)**
+- Check the checkbox beside any parameter (Width, Height, Steps, Seed, File Prefix, Output Folder, NSFW) to enable per-image control
+- When checked, an additional input field appears
+- Enter comma-separated values for manual entry (e.g., `512, 768, 1024`)
+- Or reference CSV column names (e.g., `[width_col]`)
+- **Examples:**
+  - Different dimensions per image: Check Width, enter `512, 768, 1024`
+  - Varying steps: Check Steps, enter `4, 8, 12`
+  - Per-image seeds: Check Seed, enter `12345, 67890, 11111`
+  - Custom prefixes: Check File Prefix, enter `cat, dog, bird`
+  - Different folders: Check Output Folder, enter `folder1, folder2, folder3`
+  - Mixed NSFW: Check NSFW, enter `false, true, false`
+- When using CSV/JSON files, add columns with parameter names: `width`, `height`, `steps`, `seed`, `file_prefix`, `subfolder`, `nsfw`
+- See `example_batch_parameterized.csv` for a complete example
+- Unchecked parameters use the default value for all images
+
+**5. Preview and Generate**
 - Click "Preview Batch" to see all generated prompts before running
 - Shows each prompt with parameters replaced
+- Preview now displays per-image parameters (dimensions, steps, seed, etc.)
 - Click "Generate Batch" to open confirmation dialog
 - **Confirmation dialog allows you to:**
   - Review total image count
-  - Modify file prefix before generation
-  - Change output folder before generation
+  - Modify file prefix before generation (if not parameterized per-image)
+  - Change output folder before generation (if not parameterized per-image)
   - Values auto-filled from batch form
 - All images process through the queue system
 
@@ -135,7 +137,20 @@ Three ways to provide parameter values:
 - Click any image to open detail view with metadata
 - Use arrow buttons or keyboard (←/→/A/D) to navigate between images
 - Click fullscreen button for immersive viewing
-- Controls auto-hide after 2 seconds in fullscreen (move mouse to show)
+- Controls auto-hide after 2 seconds in fullscreen (move mouse/cursor to show, cursor visible)
+- **Zoom Controls in Fullscreen:**
+  - Zoom in/out with `+`/`-` keys or mouse wheel
+  - Click zoom buttons in bottom center controls
+  - Pinch-to-zoom on touch devices
+  - Drag to pan when zoomed in (mouse or touch)
+  - Press `0` to reset zoom to 100%
+  - Zoom level displayed in controls (100%-500%)
+- **Autoplay in Fullscreen:**
+  - Click play button (bottom right) or press `Space` to start/stop
+  - Set interval in seconds (0.5-60s, default: 3s)
+  - Automatically advances to next image at set interval
+  - Pauses when you manually navigate
+  - Resumes from current position when re-enabled
 - Click "Import" to load image parameters back into Single Generation form
   - Automatically switches to Single Generation tab
   - Loads all parameters including seed and NSFW state
@@ -162,12 +177,14 @@ Three ways to provide parameter values:
 - **Completed items** display at bottom with thumbnail images
 - Cancel queued jobs with the ✕ button
 - Clear entire queue with trash icon in queue header
+- **Unload models** with cube icon to free RAM/VRAM/cache manually
 - Click completed thumbnails to navigate to image in browser
 - Queue processes oldest first (FIFO) but displays newest on top
 - Real-time status updates every second
 - **Persistent queue** - Survives server restarts
 - **Shared across all users** - All browsers see same queue
 - Keeps last 50 completed jobs with images
+- **Auto-unload models** - Automatically unloads ComfyUI models 10 seconds after queue empties
 
 ## Parameters
 
@@ -183,24 +200,30 @@ Three ways to provide parameter values:
 ## Project Structure
 
 ```
-├── app.py                 # Flask backend with queue processor
+├── app.py                 # Flask backend with queue processor & AI endpoints
 ├── comfyui_client.py      # Python ComfyUI API wrapper
+├── ai_assistant.py        # AI integration (Ollama + Gemini)
+├── ai_instructions.py     # Preset instructions for AI operations
 ├── Imaginer.json          # ComfyUI workflow definition
+├── .env.example           # Example environment file for API keys
+├── AI_FEATURES.md         # Complete AI features documentation
 ├── templates/
-│   └── index.html         # Single-page web interface
+│   └── index.html         # Single-page web interface with AI modals
 ├── static/
-│   ├── style.css          # Dark theme styling
-│   ├── script.js          # Frontend JavaScript (custom modals, folder browser)
+│   ├── style.css          # Dark theme styling with AI components
+│   ├── script.js          # Frontend JavaScript (AI, modals, folder browser)
 ├── outputs/               # Generated images with subfolders (gitignored)
 │   ├── subfolder1/       # User-created folders
 │   │   └── *.png        # Images in subfolder
 │   ├── *.png             # Root-level images
-│   └── metadata.json     # Generation metadata with folder tracking
-└── requirements.txt       # Python dependencies
+│   ├── metadata.json     # Generation metadata with folder tracking
+│   └── queue_state.json  # Persistent queue state
+└── requirements.txt       # Python dependencies (Flask only)
 ```
 
 ## API Endpoints
 
+### Core Endpoints
 - `GET /` - Main web interface with tabs
 - `POST /api/queue` - Add single generation job to queue (adds to front)
 - `POST /api/queue/batch` - Add multiple jobs from template and parameter data
@@ -213,6 +236,16 @@ Three ways to provide parameter values:
 - `POST /api/delete` - Delete files/empty folders
 - `GET /api/images/<image_id>` - Get specific image metadata
 - `GET /outputs/<path:filepath>` - Serve generated image from any subfolder
+
+### AI Assistant Endpoints
+- `GET /api/ai/models` - Get available AI models (Ollama and Gemini)
+- `POST /api/ai/optimize` - Optimize a prompt using AI
+- `POST /api/ai/suggest` - Apply user suggestion to edit prompt
+- `POST /api/ai/generate-parameters` - Generate batch parameters with AI
+
+### ComfyUI Memory Management Endpoints
+- `POST /api/comfyui/unload` - Manually unload all models and clear memory
+- `GET /api/comfyui/status` - Get memory status and auto-unload timer info
 
 ## Pinokio Integration
 
