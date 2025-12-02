@@ -5,16 +5,41 @@ Flask-based web UI for ComfyUI with AI-assisted prompting, batch generation, que
 ## Features
 
 - 🎨 **Dark-themed interface** with tab navigation (Single/Batch/Browser)
+- 📱 **Mobile-optimized** - Collapsible menus, touch-friendly controls, responsive design
 - 🤖 **AI assistance** - Prompt optimization with Ollama or Gemini
 - 📋 **Persistent queue** - Shared across users, survives restarts, shows count badge
-- 📦 **Batch generation** - Template syntax `[parameter]` with CSV/JSON import
+- 📦 **Batch generation** - Template syntax `[parameter]` with CSV/JSON import, per-image parameters
 - 📁 **Folder management** - Create, browse, move, delete with breadcrumbs
-- 🖼️ **Image viewer** - Fullscreen, keyboard nav (←/→/A/D), touch swipe
+- 🖼️ **Image viewer** - Fullscreen with zoom (100-500%), autoplay, keyboard nav, touch gestures
 - 💾 **Metadata tracking** - All generation params saved automatically
-- 🧠 **Auto-unload models** - Frees RAM/VRAM 10s after queue empties
+- 🧠 **Auto-unload models** - Frees RAM/VRAM 60s after queue empties (ComfyUI & Ollama)
 - 🔔 **Toast notifications** - Custom modals, no browser dialogs
 
 See [AI_FEATURES.md](AI_FEATURES.md) for AI setup and usage.
+
+## Mobile Features
+
+- **Responsive Design** - Optimized layouts for screens ≤768px (tablets) and ≤480px (phones)
+- **Collapsible Menu** - Hamburger button (☰) in header toggles queue sidebar
+- **Collapsible Sections** - Parameters and batch options collapse to save screen space
+- **Touch-Friendly** - Minimum 44px touch targets, increased button spacing
+- **Single-Column Layout** - Parameter grids stack vertically for easy scrolling
+- **Fullscreen Viewer** - Pinch-to-zoom, swipe navigation, optimized controls
+- **Auto-Collapse** - Queue sidebar collapses by default, reopens with menu button
+- **Tab Navigation** - Compact tabs: "Single", "Batch", "Browser"
+
+## Keyboard Shortcuts
+
+**Fullscreen Viewer:**
+- `←` / `→` or `A` / `D` - Navigate images
+- `+` / `-` - Zoom in/out
+- `0` - Reset zoom to 100%
+- `Space` - Toggle autoplay
+- `Esc` - Exit fullscreen
+
+**Image Modal:**
+- `←` / `→` - Previous/next image
+- `Esc` - Close modal
 
 ## Requirements
 
@@ -104,20 +129,11 @@ Three ways to provide parameter values:
 - Output folder (optional)
 
 **4. Per-Image Parameter Control (Advanced)**
-- Check the checkbox beside any parameter (Width, Height, Steps, Seed, File Prefix, Output Folder, NSFW) to enable per-image control
-- When checked, an additional input field appears
-- Enter comma-separated values for manual entry (e.g., `512, 768, 1024`)
-- Or reference CSV column names (e.g., `[width_col]`)
-- **Examples:**
-  - Different dimensions per image: Check Width, enter `512, 768, 1024`
-  - Varying steps: Check Steps, enter `4, 8, 12`
-  - Per-image seeds: Check Seed, enter `12345, 67890, 11111`
-  - Custom prefixes: Check File Prefix, enter `cat, dog, bird`
-  - Different folders: Check Output Folder, enter `folder1, folder2, folder3`
-  - Mixed NSFW: Check NSFW, enter `false, true, false`
-- When using CSV/JSON files, add columns with parameter names: `width`, `height`, `steps`, `seed`, `file_prefix`, `subfolder`, `nsfw`
-- See `example_batch_parameterized.csv` for a complete example
-- Unchecked parameters use the default value for all images
+- Check the checkbox beside any parameter to enable per-image control
+- Enter comma-separated values (e.g., `512, 768, 1024`) or use CSV columns (`width`, `height`, `steps`, `seed`, `file_prefix`, `subfolder`, `nsfw`)
+- Example: Check Width and enter `512, 768, 1024` for different dimensions per image
+- See `example_batch_parameterized.csv` for complete example
+- Unchecked parameters use the shared default value for all images
 
 **5. Preview and Generate**
 - Click "Preview Batch" to see all generated prompts before running
@@ -136,21 +152,10 @@ Three ways to provide parameter values:
 - Navigate to the **Image Browser** tab to see your gallery
 - Click any image to open detail view with metadata
 - Use arrow buttons or keyboard (←/→/A/D) to navigate between images
-- Click fullscreen button for immersive viewing
-- Controls auto-hide after 2 seconds in fullscreen (move mouse/cursor to show, cursor visible)
-- **Zoom Controls in Fullscreen:**
-  - Zoom in/out with `+`/`-` keys or mouse wheel
-  - Click zoom buttons in bottom center controls
-  - Pinch-to-zoom on touch devices
-  - Drag to pan when zoomed in (mouse or touch)
-  - Press `0` to reset zoom to 100%
-  - Zoom level displayed in controls (100%-500%)
-- **Autoplay in Fullscreen:**
-  - Click play button (bottom right) or press `Space` to start/stop
-  - Set interval in seconds (0.5-60s, default: 3s)
-  - Automatically advances to next image at set interval
-  - Pauses when you manually navigate
-  - Resumes from current position when re-enabled
+- Click fullscreen button for immersive viewing with zoom and autoplay
+- **Zoom:** 100-500% via mouse wheel, +/-/0 keys, touch pinch, or buttons - drag to pan when zoomed
+- **Autoplay:** Press Space or click play button (0.5-60s intervals), auto-pauses on manual navigation
+- Controls auto-hide after 2 seconds (always clickable even when hidden)
 - Click "Import" to load image parameters back into Single Generation form
   - Automatically switches to Single Generation tab
   - Loads all parameters including seed and NSFW state
@@ -172,6 +177,7 @@ Three ways to provide parameter values:
 ### Queue Management
 
 - View all jobs in left sidebar (queued → active → completed)
+- **Mobile:** Tap hamburger menu (☰) in header to open/close queue sidebar
 - **Queued items** appear at top (newest first) with status badge
 - **Active item** shows in middle while generating
 - **Completed items** display at bottom with thumbnail images
@@ -184,7 +190,8 @@ Three ways to provide parameter values:
 - **Persistent queue** - Survives server restarts
 - **Shared across all users** - All browsers see same queue
 - Keeps last 50 completed jobs with images
-- **Auto-unload models** - Automatically unloads ComfyUI models 10 seconds after queue empties
+- **Auto-unload models** - Automatically unloads ComfyUI models 60 seconds after queue empties
+- **Mobile:** Hamburger menu button toggles queue sidebar, collapsible parameter sections
 
 ## Parameters
 
@@ -201,24 +208,28 @@ Three ways to provide parameter values:
 
 ```
 ├── app.py                 # Flask backend with queue processor & AI endpoints
-├── comfyui_client.py      # Python ComfyUI API wrapper
-├── ai_assistant.py        # AI integration (Ollama + Gemini)
+├── comfyui_client.py      # Python stdlib ComfyUI API wrapper (urllib, json)
+├── ai_assistant.py        # AI integration (Ollama + Gemini, 60s keep-alive)
 ├── ai_instructions.py     # Preset instructions for AI operations
-├── Imaginer.json          # ComfyUI workflow definition
+├── Imaginer.json          # ComfyUI workflow definition with node IDs
 ├── .env.example           # Example environment file for API keys
 ├── AI_FEATURES.md         # Complete AI features documentation
 ├── templates/
-│   └── index.html         # Single-page web interface with AI modals
+│   └── index.html         # Mobile-optimized SPA with collapsible sections
 ├── static/
-│   ├── style.css          # Dark theme styling with AI components
-│   ├── script.js          # Frontend JavaScript (AI, modals, folder browser)
+│   ├── style.css          # Dark theme, mobile responsive (≤768px, ≤480px)
+│   ├── script.js          # Vanilla JS (mobile handlers, AI, modals)
 ├── outputs/               # Generated images with subfolders (gitignored)
 │   ├── subfolder1/       # User-created folders
 │   │   └── *.png        # Images in subfolder
 │   ├── *.png             # Root-level images
 │   ├── metadata.json     # Generation metadata with folder tracking
-│   └── queue_state.json  # Persistent queue state
-└── requirements.txt       # Python dependencies (Flask only)
+│   └── queue_state.json  # Persistent queue state (shared across users)
+├── requirements.txt       # Python dependencies (Flask only)
+├── install.json          # Pinokio install script
+├── start.json            # Pinokio start script
+├── update.json           # Pinokio update script
+└── reset.json            # Pinokio reset script
 ```
 
 ## API Endpoints
@@ -285,6 +296,10 @@ app.run(host='0.0.0.0', port=4879, debug=False, threaded=True)
 - Queue processing runs in daemon thread
 - Uses only Python stdlib for ComfyUI client (no pip dependencies)
 - Flask is the only external dependency
+- **Model Management:**
+  - ComfyUI models auto-unload 60s after queue empties
+  - Ollama models stay loaded 60s after last AI call
+  - Both can be manually unloaded via UI buttons
 
 ## Privacy
 
