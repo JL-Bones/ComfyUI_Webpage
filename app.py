@@ -29,7 +29,7 @@ MAX_COMPLETED_HISTORY = 50
 queue_lock = threading.Lock()
 active_generation = None
 last_queue_empty_time = None  # Track when queue became empty
-UNLOAD_DELAY_SECONDS = 10  # Wait 10 seconds after queue empty before unloading
+UNLOAD_DELAY_SECONDS = 60  # Wait 60 seconds after queue empty before unloading
 
 # Initialize ComfyUI client and AI assistant
 comfyui_client = ComfyUIClient(server_address="127.0.0.1:8188")

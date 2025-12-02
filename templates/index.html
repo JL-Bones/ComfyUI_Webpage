@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
     <title>ComfyUI Web Interface</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
@@ -56,6 +58,13 @@
         <!-- Main Content -->
         <main class="main-content">
             <header class="app-header">
+                <button class="mobile-menu-btn" id="mobileMenuBtn" title="Toggle Menu">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="3" y1="12" x2="21" y2="12"></line>
+                        <line x1="3" y1="6" x2="21" y2="6"></line>
+                        <line x1="3" y1="18" x2="21" y2="18"></line>
+                    </svg>
+                </button>
                 <h1>ComfyUI Imaginer</h1>
             </header>
 
@@ -87,6 +96,13 @@
                             </button>
                         </div>
 
+                        <button class="collapsible-header" data-target="singleParameters">
+                            <span>Parameters</span>
+                            <svg class="collapse-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                        </button>
+                        <div class="collapsible-content active" id="singleParameters">
                         <div class="parameters-grid">
                         <div class="form-group">
                             <label for="width">Width</label>
@@ -159,7 +175,6 @@
                                 id="subfolder" 
                                 placeholder="Leave empty for root"
                                 class="form-control"
-                                readonly
                             >
                         </div>
 
@@ -179,6 +194,7 @@
                             </label>
                         </div>
                     </div>
+                        </div>
 
                     <button class="btn btn-primary btn-large" id="generateBtn">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -214,6 +230,13 @@
                             </div>
                         </div>
 
+                        <button class="collapsible-header" data-target="batchParameters">
+                            <span>Generation Parameters</span>
+                            <svg class="collapse-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                        </button>
+                        <div class="collapsible-content active" id="batchParameters">
                         <div class="parameters-grid">
                             <div class="form-group">
                                 <label for="batchWidth">
@@ -354,7 +377,6 @@
                                     id="batchSubfolder" 
                                     placeholder="Leave empty for root"
                                     class="form-control"
-                                    readonly
                                 >
                                 <input 
                                     type="text" 
@@ -393,8 +415,16 @@
                                 >
                             </div>
                         </div>
+                        </div>
 
                         <!-- Data Input Methods -->
+                        <button class="collapsible-header" data-target="batchDataInput" style="margin-top: 1rem;">
+                            <span>Data Input</span>
+                            <svg class="collapse-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                        </button>
+                        <div class="collapsible-content active" id="batchDataInput">
                         <div class="form-group" style="margin-top: 2rem;">
                             <label>Parameter Data Input</label>
                             
@@ -458,6 +488,7 @@
                                     Accepts CSV or JSON files. CSV should have headers matching your parameter names.
                                 </small>
                             </div>
+                        </div>
                         </div>
 
                         <!-- Preview Section -->

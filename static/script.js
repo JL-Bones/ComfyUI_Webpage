@@ -31,12 +31,65 @@ let isAutoplayActive = false;
 document.addEventListener('DOMContentLoaded', function() {
     initializeEventListeners();
     initializeTabs();
+    initializeMobileOverlay();
     browseFolder('');
     startQueueUpdates();
 });
 
+// Mobile Overlay for Sidebar
+function initializeMobileOverlay() {
+    const mainContent = document.querySelector('.main-content');
+    const sidebar = document.getElementById('queueSidebar');
+    
+    // Start with sidebar collapsed on mobile
+    if (sidebar && window.innerWidth <= 768) {
+        sidebar.classList.add('collapsed');
+    }
+    
+    // Prevent clicks inside sidebar from closing it
+    if (sidebar) {
+        sidebar.addEventListener('click', function(e) {
+            e.stopPropagation();
+        });
+    }
+    
+    // Close sidebar when clicking on main content on mobile
+    if (mainContent && sidebar) {
+        mainContent.addEventListener('click', function(e) {
+            if (window.innerWidth <= 768 && !sidebar.classList.contains('collapsed')) {
+                // Only close if we're on mobile and sidebar is open
+                sidebar.classList.add('collapsed');
+            }
+        });
+    }
+    
+    // Handle window resize
+    window.addEventListener('resize', function() {
+        if (sidebar) {
+            if (window.innerWidth > 768) {
+                // On desktop, remove collapsed class to show normal behavior
+                sidebar.classList.remove('collapsed');
+            } else {
+                // On mobile, ensure it's collapsed by default
+                if (!sidebar.classList.contains('collapsed')) {
+                    // Only add if user hasn't manually opened it
+                }
+            }
+        }
+    });
+}
+
 // Event Listeners
 function initializeEventListeners() {
+    // Mobile menu
+    const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+    if (mobileMenuBtn) {
+        mobileMenuBtn.addEventListener('click', toggleMobileMenu);
+    }
+    
+    // Collapsible sections
+    initializeCollapsibleSections();
+    
     // Queue toggle
     document.getElementById('toggleQueue').addEventListener('click', toggleQueue);
     document.getElementById('clearQueueBtn').addEventListener('click', clearQueue);
@@ -86,6 +139,50 @@ function initializeEventListeners() {
     
     // Keyboard shortcuts
     document.addEventListener('keydown', handleKeyboard);
+}
+
+// Mobile Menu Toggle
+function toggleMobileMenu(event) {
+    // Prevent event from bubbling to main content
+    if (event) {
+        event.stopPropagation();
+    }
+    
+    const sidebar = document.getElementById('queueSidebar');
+    const isCollapsed = sidebar.classList.contains('collapsed');
+    
+    if (isCollapsed) {
+        // Opening the sidebar
+        sidebar.classList.remove('collapsed');
+    } else {
+        // Closing the sidebar
+        sidebar.classList.add('collapsed');
+    }
+}
+
+// Collapsible Sections
+function initializeCollapsibleSections() {
+    const collapsibleHeaders = document.querySelectorAll('.collapsible-header');
+    
+    collapsibleHeaders.forEach(header => {
+        header.addEventListener('click', function() {
+            const targetId = this.getAttribute('data-target');
+            const content = document.getElementById(targetId);
+            
+            if (content) {
+                const isActive = content.classList.contains('active');
+                
+                // Toggle active state
+                if (isActive) {
+                    content.classList.remove('active');
+                    this.classList.add('collapsed');
+                } else {
+                    content.classList.add('active');
+                    this.classList.remove('collapsed');
+                }
+            }
+        });
+    });
 }
 
 // Tab Management
@@ -726,7 +823,9 @@ async function createNewFolder() {
 }
 
 async function setOutputFolder() {
+    // Set output folder for both single and batch modes
     document.getElementById('subfolder').value = currentPath;
+    document.getElementById('batchSubfolder').value = currentPath;
     showNotification(`Output folder set to: ${currentPath || 'Root'}`, 'Output Folder Set', 'success', 3000);
 }
 

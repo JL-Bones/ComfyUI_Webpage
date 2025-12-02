@@ -267,11 +267,11 @@ class AIAssistant:
             return {'success': False, 'error': f'Ollama error: {str(e)}'}
     
     def _unload_ollama_model(self, model: str):
-        """Unload Ollama model from memory"""
+        """Unload Ollama model from memory after 60 seconds"""
         try:
             data = {
                 'model': model,
-                'keep_alive': 0  # Unload immediately
+                'keep_alive': '60s'  # Keep loaded for 60 seconds after last use
             }
             
             req = urllib.request.Request(
