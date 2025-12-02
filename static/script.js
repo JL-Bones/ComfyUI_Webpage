@@ -163,9 +163,6 @@ function initializeEventListeners() {
     document.getElementById('moveBtn').addEventListener('click', moveSelectedItems);
     document.getElementById('deleteBtn').addEventListener('click', deleteSelectedItems);
     
-    // NSFW toggle
-    document.getElementById('nsfwToggle').addEventListener('click', toggleNSFW);
-    
     // Touch support for fullscreen
     initTouchSupport();
     
@@ -252,32 +249,6 @@ function switchTab(tabName) {
     const targetContent = document.getElementById(tabs[tabName]);
     if (targetContent) {
         targetContent.classList.add('active');
-    }
-}
-
-// NSFW Toggle
-function toggleNSFW() {
-    const checkbox = document.getElementById('nsfw');
-    const toggle = document.getElementById('nsfwToggle');
-    
-    checkbox.checked = !checkbox.checked;
-    
-    if (checkbox.checked) {
-        toggle.classList.add('nsfw-active');
-    } else {
-        toggle.classList.remove('nsfw-active');
-    }
-}
-
-// Initialize NSFW button state on import
-function updateNSFWButton() {
-    const checkbox = document.getElementById('nsfw');
-    const toggle = document.getElementById('nsfwToggle');
-    
-    if (checkbox.checked) {
-        toggle.classList.add('nsfw-active');
-    } else {
-        toggle.classList.remove('nsfw-active');
     }
 }
 
@@ -633,7 +604,6 @@ function renderQueueItem(job, isActive) {
                 <div class="queue-item-params">
                     <span class="param-badge">${job.width}x${job.height}</span>
                     <span class="param-badge">${job.steps} steps</span>
-                    ${job.nsfw ? '<span class="param-badge nsfw-badge">NSFW</span>' : ''}
                 </div>
             </div>
         </div>
@@ -697,7 +667,6 @@ async function generateImage() {
         height: parseInt(document.getElementById('height').value),
         steps: parseInt(document.getElementById('steps').value),
         seed: document.getElementById('seed').value ? parseInt(document.getElementById('seed').value) : null,
-        nsfw: document.getElementById('nsfw').checked,
         file_prefix: document.getElementById('filePrefix').value.trim() || 'comfyui',
         subfolder: document.getElementById('subfolder').value.trim()
     };
@@ -1050,10 +1019,6 @@ function renderMetadata(image) {
                 <div class="metadata-value">${image.seed}</div>
             </div>
             <div class="metadata-item">
-                <div class="metadata-label">NSFW</div>
-                <div class="metadata-value">${image.nsfw ? 'Yes' : 'No'}</div>
-            </div>
-            <div class="metadata-item">
                 <div class="metadata-label">Generated</div>
                 <div class="metadata-value">${formatDate(image.timestamp)}</div>
             </div>
@@ -1075,12 +1040,8 @@ function importImageData() {
     document.getElementById('height').value = currentImageData.height || 1024;
     document.getElementById('steps').value = currentImageData.steps || 4;
     document.getElementById('seed').value = currentImageData.seed || '';
-    document.getElementById('nsfw').checked = currentImageData.nsfw || false;
     document.getElementById('filePrefix').value = currentImageData.file_prefix || 'comfyui';
     document.getElementById('subfolder').value = currentImageData.subfolder || '';
-    
-    // Update NSFW button visual state
-    updateNSFWButton();
     
     // Close the modal
     closeImageModal();
@@ -1493,9 +1454,6 @@ function initializeBatchMode() {
         });
     });
     
-    // Batch NSFW toggle
-    document.getElementById('batchNsfwToggle').addEventListener('click', toggleBatchNSFW);
-    
     // Parse template button
     document.getElementById('parseTemplateBtn').addEventListener('click', parseTemplateParameters);
     
@@ -1512,7 +1470,7 @@ function initializeBatchMode() {
 }
 
 function setupBatchParameterCheckboxes() {
-    const paramFields = ['Width', 'Height', 'Steps', 'Seed', 'FilePrefix', 'Subfolder', 'Nsfw'];
+    const paramFields = ['Width', 'Height', 'Steps', 'Seed', 'FilePrefix', 'Subfolder'];
     
     paramFields.forEach(field => {
         const checkbox = document.getElementById(`batch${field}Param`);
@@ -1556,19 +1514,6 @@ function switchInputMethod(method) {
     };
     
     document.getElementById(contentIds[method]).style.display = 'block';
-}
-
-function toggleBatchNSFW() {
-    const checkbox = document.getElementById('batchNsfw');
-    const toggle = document.getElementById('batchNsfwToggle');
-    
-    checkbox.checked = !checkbox.checked;
-    
-    if (checkbox.checked) {
-        toggle.classList.add('nsfw-active');
-    } else {
-        toggle.classList.remove('nsfw-active');
-    }
 }
 
 function extractParametersFromTemplate(template) {
@@ -1686,8 +1631,7 @@ function addParameterizedFields(batchData, count) {
         { name: 'steps', checkbox: 'batchStepsParam', input: 'batchStepsParamValue', type: 'number' },
         { name: 'seed', checkbox: 'batchSeedParam', input: 'batchSeedParamValue', type: 'number' },
         { name: 'file_prefix', checkbox: 'batchFilePrefixParam', input: 'batchFilePrefixParamValue', type: 'string' },
-        { name: 'subfolder', checkbox: 'batchSubfolderParam', input: 'batchSubfolderParamValue', type: 'string' },
-        { name: 'nsfw', checkbox: 'batchNsfwParam', input: 'batchNsfwParamValue', type: 'boolean' }
+        { name: 'subfolder', checkbox: 'batchSubfolderParam', input: 'batchSubfolderParamValue', type: 'string' }
     ];
     
     paramFields.forEach(field => {
@@ -1838,9 +1782,6 @@ async function previewBatch() {
             }
             if (params.subfolder) {
                 paramInfo += `<span class="param-badge">Folder: ${params.subfolder}</span> `;
-            }
-            if (params.nsfw) {
-                paramInfo += `<span class="param-badge nsfw-badge">NSFW</span> `;
             }
             
             html += `
@@ -2057,7 +1998,6 @@ async function generateBatch() {
             height: parseInt(document.getElementById('batchHeight').value),
             steps: parseInt(document.getElementById('batchSteps').value),
             seed: document.getElementById('batchSeed').value ? parseInt(document.getElementById('batchSeed').value) : null,
-            nsfw: document.getElementById('batchNsfw').checked,
             file_prefix: batchOptions.file_prefix,
             subfolder: batchOptions.subfolder
         };
@@ -2398,7 +2338,6 @@ async function aiGenerateParameters() {
         height: document.getElementById('batchHeight').value,
         steps: document.getElementById('batchSteps').value,
         seed: document.getElementById('batchSeed').value || 'random',
-        nsfw: document.getElementById('batchNsfw').checked,
         file_prefix: document.getElementById('batchFilePrefix').value,
         subfolder: document.getElementById('batchSubfolder').value
     };
@@ -2411,7 +2350,6 @@ async function aiGenerateParameters() {
     if (document.getElementById('batchSeedParam').checked) variedParams.push('seed');
     if (document.getElementById('batchFilePrefixParam').checked) variedParams.push('file_prefix');
     if (document.getElementById('batchSubfolderParam').checked) variedParams.push('subfolder');
-    if (document.getElementById('batchNsfwParam').checked) variedParams.push('nsfw');
     
     // Show loading
     document.getElementById('aiParamLoadingIndicator').style.display = 'block';

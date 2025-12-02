@@ -436,16 +436,6 @@ textarea.form-control {
     width: 100%;
 }
 
-.nsfw-group {
-    display: flex;
-    flex-direction: column;
-}
-
-.nsfw-group label:first-child {
-    margin-bottom: 0.5rem;
-    visibility: hidden;
-}
-
 .checkbox-label:hover {
     border-color: var(--accent-primary);
     transform: translateY(-1px);
@@ -454,28 +444,6 @@ textarea.form-control {
 .checkbox-icon {
     opacity: 0;
     transition: opacity 0.2s;
-}
-
-/* NSFW Active State */
-.checkbox-label.nsfw-active {
-    background: var(--error);
-    border-color: var(--error);
-    color: white;
-}
-
-.checkbox-label.nsfw-active:hover {
-    background: #dc2626;
-    border-color: #dc2626;
-}
-
-.checkbox-label.nsfw-active .checkbox-icon {
-    opacity: 1;
-}
-
-.nsfw-badge {
-    background: rgba(239, 68, 68, 0.2) !important;
-    color: var(--error) !important;
-    font-weight: 600;
 }
 
 .parameters-grid {

@@ -129,7 +129,7 @@ def save_queue_state():
         print(f"Error saving queue state: {e}")
 
 
-def add_metadata_entry(image_path, prompt, width, height, steps, seed, nsfw, file_prefix, subfolder):
+def add_metadata_entry(image_path, prompt, width, height, steps, seed, file_prefix, subfolder):
     """Add a new metadata entry"""
     metadata = load_metadata()
     entry = {
@@ -143,7 +143,6 @@ def add_metadata_entry(image_path, prompt, width, height, steps, seed, nsfw, fil
         "height": height,
         "steps": steps,
         "seed": seed,
-        "nsfw": nsfw,
         "file_prefix": file_prefix
     }
     metadata.append(entry)
@@ -185,7 +184,6 @@ def process_queue():
                     steps=job['steps'],
                     cfg=1.0,
                     seed=seed,
-                    nsfw=job['nsfw'],
                     output_path=str(output_path),
                     wait=True
                 )
@@ -198,7 +196,6 @@ def process_queue():
                     job['height'],
                     job['steps'],
                     seed,
-                    job['nsfw'],
                     file_prefix,
                     subfolder
                 )
@@ -287,7 +284,6 @@ def add_to_queue():
         'height': int(data.get('height', 1024)),
         'steps': int(data.get('steps', 4)),
         'seed': data.get('seed'),
-        'nsfw': data.get('nsfw', False),
         'file_prefix': data.get('file_prefix', 'comfyui'),
         'subfolder': data.get('subfolder', ''),
         'status': 'queued',
@@ -322,7 +318,7 @@ def add_batch_to_queue():
         
         for key, value in params.items():
             # Check if this is a known override parameter
-            if key in ['width', 'height', 'steps', 'seed', 'file_prefix', 'subfolder', 'nsfw']:
+            if key in ['width', 'height', 'steps', 'seed', 'file_prefix', 'subfolder']:
                 override_params[key] = value
             else:
                 # It's a prompt template parameter
@@ -341,7 +337,6 @@ def add_batch_to_queue():
             'height': int(override_params.get('height', shared_params.get('height', 1024))),
             'steps': int(override_params.get('steps', shared_params.get('steps', 4))),
             'seed': override_params.get('seed', shared_params.get('seed')),  # Per-image or shared seed
-            'nsfw': override_params.get('nsfw', shared_params.get('nsfw', False)),
             'file_prefix': override_params.get('file_prefix', shared_params.get('file_prefix', 'batch')),
             'subfolder': override_params.get('subfolder', shared_params.get('subfolder', '')),
             'status': 'queued',

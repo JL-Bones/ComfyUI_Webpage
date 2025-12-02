@@ -1,6 +1,6 @@
 # ComfyUI Web Interface
 
-Flask-based web UI for ComfyUI with AI-assisted prompting, batch generation, queue management, and file organization.
+Flask-based web UI for ComfyUI with AI-assisted prompting, batch generation, queue management, and file organization. Optimized for Qwen Image model with 4-step lightning generation.
 
 ## Features
 
@@ -44,7 +44,11 @@ See [AI_FEATURES.md](AI_FEATURES.md) for AI setup and usage.
 ## Requirements
 
 - Python 3.7+ and Flask (`pip install flask`)
-- ComfyUI server running on `http://127.0.0.1:8188`
+- ComfyUI server running on `http://127.0.0.1:8188` with Qwen Image model installed
+  - Model: `qwen_image_fp8_e4m3fn.safetensors` (diffusion model)
+  - CLIP: `qwen_2.5_vl_7b_fp8_scaled.safetensors`
+  - VAE: `qwen_image_vae.safetensors`
+  - LoRA: `Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors`
 - Optional: Ollama or Gemini API key for AI features (see [AI_FEATURES.md](AI_FEATURES.md))
 
 ## Quick Start
@@ -73,7 +77,6 @@ The interface has three tabs:
    - **Width/Height**: Image dimensions (default: 1024×1024)
    - **Steps**: Sampling steps (default: 4)
    - **Seed**: Random seed (leave empty for random, ✕ button to clear)
-   - **NSFW**: Toggle NSFW mode (button turns red when active)
    - **File Prefix**: Custom filename prefix (default: "comfyui")
    - **Subfolder**: Target folder for output (optional, set from browser)
 4. Click "Generate" to add to queue
@@ -125,12 +128,11 @@ Three ways to provide parameter values:
 - Width, Height, Steps apply to all images (default: 1024×1024, 4 steps)
 - Seed (optional) - Same seed for all images or leave empty for random per image
 - File Prefix (default: "batch")
-- NSFW mode toggle
 - Output folder (optional)
 
 **4. Per-Image Parameter Control (Advanced)**
 - Check the checkbox beside any parameter to enable per-image control
-- Enter comma-separated values (e.g., `512, 768, 1024`) or use CSV columns (`width`, `height`, `steps`, `seed`, `file_prefix`, `subfolder`, `nsfw`)
+- Enter comma-separated values (e.g., `512, 768, 1024`) or use CSV columns (`width`, `height`, `steps`, `seed`, `file_prefix`, `subfolder`)
 - Example: Check Width and enter `512, 768, 1024` for different dimensions per image
 - See `example_batch_parameterized.csv` for complete example
 - Unchecked parameters use the shared default value for all images
@@ -159,7 +161,7 @@ Three ways to provide parameter values:
 - Controls auto-hide after 2 seconds (always clickable even when hidden)
 - Click "Import" to load image parameters back into Single Generation form
   - Automatically switches to Single Generation tab
-  - Loads all parameters including seed and NSFW state
+  - Loads all parameters including seed
   - Scrolls to form for easy editing
 - Click "Delete Image" to remove image (with custom confirmation dialog)
 
@@ -191,18 +193,19 @@ Three ways to provide parameter values:
 - **Persistent queue** - Survives server restarts via `queue_state.json`
 - **Shared across all users** - All browsers see same queue state
 - Keeps last 50 completed jobs with images
-- **Auto-unload models** - Automatically unloads ComfyUI models 60 seconds after queue empties
-- **Auto-refresh browser** - Gallery refreshes when new images complete
-- **Mobile:** Hamburger menu button toggles queue sidebar, collapsible parameter sections
+## Generation Parameters
 
-## Parameters
-
-- `positive_prompt`: Main prompt text
-- `width`: Image width (64-2048, step 64)
-- `height`: Image height (64-2048, step 64)  
+- `positive_prompt`: Main prompt text (sent to Qwen CLIP encoder)
+- `width`: Image width (64-2048, step 64, default 1024)
+- `height`: Image height (64-2048, step 64, default 1024)  
+- `steps`: Sampling steps (1-100, default 4 for Qwen Lightning)
+- `seed`: Random seed (optional, auto-generated if empty)
+- `cfg`: Fixed at 1.0 (required for Qwen Image model)
+- `sampler`: Fixed at "euler" with "simple" scheduler
+- `file_prefix`: Custom filename prefix (default: "comfyui")
+- `subfolder`: Target subfolder path (optional)
 - `steps`: Sampling steps (1-100, default 4)
 - `seed`: Random seed (optional, auto-generated if empty)
-- `nsfw`: Enable NSFW mode (boolean)
 - `file_prefix`: Custom filename prefix (default: "comfyui")
 - `subfolder`: Target subfolder path (optional)
 
@@ -264,12 +267,6 @@ Three ways to provide parameter values:
 
 This project includes Pinokio integration files for easy package management:
 
-- `install.json` - Installs Python environment and Flask
-- `start.json` - Starts the web server
-- `update.json` - Updates Flask to latest version
-- `reset.json` - Removes virtual environment and outputs
-- `open.json` - Opens web interface in browser
-
 ## Configuration
 
 ### Change ComfyUI Server Address
@@ -277,13 +274,29 @@ This project includes Pinokio integration files for easy package management:
 Edit both files:
 
 ```python
-# app.py (line ~30)
+# app.py (line ~37)
 comfyui_client = ComfyUIClient(server_address="127.0.0.1:8188")
 
 # comfyui_client.py (line ~18)
 def __init__(self, server_address: str = "127.0.0.1:8188"):
 ```
 
+### Change Web Server Port
+
+```python
+# app.py (last line)
+app.run(host='0.0.0.0', port=4879, debug=False, threaded=True)
+```
+
+### Use Different ComfyUI Workflow
+
+1. Export your workflow from ComfyUI as JSON
+2. Replace `Imaginer.json` with your workflow file
+3. Update `comfyui_client.py:modify_workflow()` with your node IDs:
+   - Find prompt input node → update line with `["75:6"]["inputs"]["text"]`
+   - Find dimension node → update lines with `["75:58"]["inputs"]["width/height"]`
+   - Find sampler node → update lines with `["75:3"]["inputs"][...]`
+4. Adjust default parameters if your workflow requires different settings
 ### Change Web Server Port
 
 ```python

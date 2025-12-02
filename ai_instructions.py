@@ -48,7 +48,6 @@ Special parameter types:
 - width/height: Use appropriate image dimensions (512, 768, 1024, 1536, 2048) considering aspect ratios
 - steps: Use generation step counts (typically 4-20, with 4 being fast, 8-12 balanced, 16-20 detailed)
 - seed: Use random integers or leave empty for random generation
-- nsfw: Use 'true' or 'false' (lowercase)
 - file_prefix: Use descriptive names matching the content (e.g., "portrait", "landscape", "abstract")
 - subfolder: Use logical folder names for organization (e.g., "portraits", "landscapes", "style_tests")
 

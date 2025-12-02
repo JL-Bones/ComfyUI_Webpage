@@ -129,8 +129,7 @@ class ComfyUIClient:
         height: Optional[int] = None,
         steps: Optional[int] = None,
         cfg: Optional[float] = None,
-        seed: Optional[int] = None,
-        nsfw: bool = False
+        seed: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         Modify workflow parameters
@@ -143,7 +142,6 @@ class ComfyUIClient:
             steps: Number of sampling steps
             cfg: CFG scale
             seed: Random seed (None for random)
-            nsfw: Enable NSFW mode
             
         Returns:
             Modified workflow
@@ -172,9 +170,6 @@ class ComfyUIClient:
             # Generate random seed
             modified["75:3"]["inputs"]["seed"] = random.randint(0, 2**32 - 1)
         
-        # Update NSFW setting
-        modified["75:89"]["inputs"]["value"] = nsfw
-        
         return modified
     
     def generate_image(
@@ -185,7 +180,6 @@ class ComfyUIClient:
         steps: int = 4,
         cfg: float = 1.0,
         seed: Optional[int] = None,
-        nsfw: bool = False,
         output_path: Optional[str] = None,
         wait: bool = True
     ) -> Optional[str]:
@@ -199,7 +193,6 @@ class ComfyUIClient:
             steps: Number of sampling steps
             cfg: CFG scale
             seed: Random seed (None for random)
-            nsfw: Enable NSFW mode
             output_path: Path to save the image (None to not save)
             wait: Whether to wait for completion
             
@@ -215,8 +208,7 @@ class ComfyUIClient:
             height=height,
             steps=steps,
             cfg=cfg,
-            seed=seed,
-            nsfw=nsfw
+            seed=seed
         )
         
         # Queue the prompt

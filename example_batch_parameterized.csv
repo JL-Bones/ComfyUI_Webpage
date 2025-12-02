@@ -9,13 +9,12 @@
 # - seed: Specific seed (or leave empty for random)
 # - file_prefix: Custom filename prefix
 # - subfolder: Output folder path
-# - nsfw: true/false for NSFW mode
 #
 # CSV Data:
 
-subject,clothing,location,width,height,steps,seed,file_prefix,subfolder,nsfw
-cat,sweater,garden,512,512,4,12345,cat_images,animals,false
-dog,hat,park,768,768,8,67890,dog_images,animals,false
-bird,scarf,tree,1024,1024,12,11111,bird_images,animals,false
-person,jacket,city,1024,1536,6,22222,person_images,people,false
-robot,armor,desert,1536,1024,10,33333,robot_images,sci-fi,false
+subject,clothing,location,width,height,steps,seed,file_prefix,subfolder
+cat,sweater,garden,512,512,4,12345,cat_images,animals
+dog,hat,park,768,768,8,67890,dog_images,animals
+bird,scarf,tree,1024,1024,12,11111,bird_images,animals
+person,jacket,city,1024,1536,6,22222,person_images,people
+robot,armor,desert,1536,1024,10,33333,robot_images,sci-fi

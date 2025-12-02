@@ -173,8 +173,6 @@ class AIAssistant:
                 settings_info.append(f"Generation steps: {batch_params['steps']}")
             if batch_params.get('seed') and batch_params['seed'] != 'random':
                 settings_info.append(f"Seed: {batch_params['seed']}")
-            if batch_params.get('nsfw'):
-                settings_info.append("NSFW mode: enabled")
             if batch_params.get('file_prefix'):
                 settings_info.append(f"File prefix: {batch_params['file_prefix']}")
             if batch_params.get('subfolder'):
@@ -192,8 +190,6 @@ class AIAssistant:
                 varied_info += "\n- For steps, suggest values between 4 and 20"
             if 'seed' in varied_params:
                 varied_info += "\n- For seed, use random integers or leave empty"
-            if 'nsfw' in varied_params:
-                varied_info += "\n- For nsfw, use 'true' or 'false'"
             settings_context += varied_info
         
         # Build instruction based on context type

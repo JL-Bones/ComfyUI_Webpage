@@ -1,7 +1,7 @@
 # ComfyUI Web Interface - AI Agent Instructions
 
 ## Project Overview
-Flask-based web UI for ComfyUI image generation with AI-assisted prompting, batch processing, queue management, and file organization. **Requires ComfyUI server at `http://127.0.0.1:8188`**. Only dependency: Flask.
+Flask-based web UI for ComfyUI image generation with AI-assisted prompting, batch processing, queue management, and file organization. **Requires ComfyUI server at `http://127.0.0.1:8188`**. Only dependency: Flask. Uses Qwen Image model workflow (4-step lightning generation).
 
 ## Architecture (Three-Layer System)
 
@@ -9,8 +9,7 @@ Flask-based web UI for ComfyUI image generation with AI-assisted prompting, batc
 Python stdlib wrapper (urllib, json). Modifies workflow JSON with hardcoded node IDs from `Imaginer.json`:
 - `75:6` - Positive prompt (CLIPTextEncode)  
 - `75:58` - Dimensions (EmptySD3LatentImage)  
-- `75:3` - Sampler (KSampler)  
-- `75:89` - NSFW toggle (easy boolean)
+- `75:3` - Sampler (KSampler)
 
 **2. Flask Backend** (`app.py`)  
 Queue processor (LIFO display, FIFO execution), metadata storage, AI integration. Serves on `0.0.0.0:4879`. Background daemon thread processes queue sequentially. Model auto-unload after 60s idle.
@@ -64,7 +63,7 @@ def get_next_filename(prefix: str, subfolder: str = "") -> tuple:
 ```
 
 ### Metadata Storage
-Flat JSON array in `outputs/metadata.json`: `id, filename, path, subfolder, timestamp, prompt, width, height, steps, seed, nsfw, file_prefix`. No negative prompt or CFG (CFG=1.0).
+Flat JSON array in `outputs/metadata.json`: `id, filename, path, subfolder, timestamp, prompt, width, height, steps, seed, file_prefix`. No negative prompt. CFG fixed at 1.0 for Qwen Image model compatibility.
 
 ### AI Integration (`ai_assistant.py`)
 Dual provider: Ollama (local, port 11434) and Gemini (API key from `.env`). Models kept loaded 60s after use. Context-aware batch generation receives `batch_params` and `varied_params` for intelligent suggestions.
@@ -135,7 +134,7 @@ python -m py_compile <file>      # Check syntax
 ## Project-Specific Conventions
 
 **Batch Generation:**  
-Template syntax: `[parameter_name]`. Per-image parameters via checkboxes enable comma-separated values or CSV columns (width, height, steps, seed, file_prefix, subfolder, nsfw).
+Template syntax: `[parameter_name]`. Per-image parameters via checkboxes enable comma-separated values or CSV columns (width, height, steps, seed, file_prefix, subfolder).
 
 **Mobile Sidebar:**  
 - Prevent click propagation: `event.stopPropagation()` on toggle
@@ -153,16 +152,24 @@ Both `#subfolder` and `#batchSubfolder` must be editable (no readonly) and popul
 
 ## Common Modifications
 
-**Add Parameter:**  
-1. HTML input in `templates/index.html`  
-2. Capture in `generateImage()` (script.js)  
-3. Add to job dict in `add_to_queue()` (app.py)  
-4. Pass to `comfyui_client.generate_image()`  
-5. Store in `add_metadata_entry()` signature  
-6. Display in `renderMetadata()` (script.js)
+**Add Generation Parameter:**  
+1. HTML input in `templates/index.html` (both single and batch forms)
+2. Capture in `generateImage()` and batch generation (script.js)  
+3. Add to job dict in `add_to_queue()` and `add_batch_to_queue()` (app.py)  
+4. Add to `modify_workflow()` and `generate_image()` signatures (comfyui_client.py)
+5. Update workflow node in `modify_workflow()` using appropriate node ID from `Imaginer.json`
+6. Store in `add_metadata_entry()` signature (app.py)
+7. Display in `renderMetadata()` (script.js)
+8. Add to batch param fields array if supporting per-image variation
 
 **Change Server Address:**  
 Update TWO places: `app.py` line ~37, `comfyui_client.py` line ~18.
+
+**Change ComfyUI Workflow:**  
+1. Export workflow from ComfyUI as JSON → save as `Imaginer.json`
+2. Find node IDs for: prompt input, dimensions, sampler settings
+3. Update node IDs in `comfyui_client.py:modify_workflow()` method
+4. Test with single generation before attempting batch
 
 **Add Mobile Collapsible Section:**  
 1. HTML: `<button class="collapsible-header" data-target="id">...</button>`  
