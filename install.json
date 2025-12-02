@@ -9,8 +9,13 @@
     {
       "method": "shell.run",
       "params": {
-        "venv": "venv",
-        "message": "pip install flask"
+        "message": "{{platform==='win32' ? '.\\\\venv\\\\Scripts\\\\python.exe' : './venv/bin/python'}} -m pip install --upgrade pip"
+      }
+    },
+    {
+      "method": "shell.run",
+      "params": {
+        "message": "{{platform==='win32' ? '.\\\\venv\\\\Scripts\\\\python.exe' : './venv/bin/python'}} -m pip install flask"
       }
     },
     {

@@ -39,6 +39,7 @@ outputs/
 .env
 .env.local
 .env.*.local
+ENVIRONMENT
 
 # IDE
 .vscode/

@@ -3,13 +3,12 @@
     {
       "method": "shell.run",
       "params": {
-        "venv": "venv",
         "env": {
           "PYTHONUNBUFFERED": "1"
         },
-        "message": "python app.py",
+        "message": "{{platform==='win32' ? '.\\\\venv\\\\Scripts\\\\python.exe' : './venv/bin/python'}} app.py",
         "on": [{
-          "event": "/.*/",
+          "event": "/.*./",
           "return": true
         }]
       }
