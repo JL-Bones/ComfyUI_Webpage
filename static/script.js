@@ -140,7 +140,6 @@ function initializeEventListeners() {
     
     // Clear seed button
     document.getElementById('clearSeedBtn').addEventListener('click', clearSeed);
-    document.getElementById('clearBatchSeedBtn').addEventListener('click', clearBatchSeed);
     
     // Fullscreen viewer
     document.getElementById('fullscreenBtn').addEventListener('click', openFullscreen);
@@ -242,7 +241,6 @@ function switchTab(tabName) {
     
     const tabs = {
         'single': 'singleTab',
-        'batch': 'batchTab',
         'browser': 'browserTab'
     };
     
@@ -409,10 +407,7 @@ function clearSeed() {
     document.getElementById('seed').focus();
 }
 
-function clearBatchSeed() {
-    document.getElementById('batchSeed').value = '';
-    document.getElementById('batchSeed').focus();
-}
+
 
 // Queue Management
 function toggleQueue() {
@@ -457,16 +452,60 @@ async function unloadComfyUIModels() {
             method: 'POST'
         });
         
-        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        let result;
+        try {
+            result = await response.json();
+        } catch (jsonError) {
+            // If JSON parsing fails, assume success if response was OK
+            console.warn('Could not parse JSON response, assuming success');
+            result = { success: true };
+        }
         
         if (result.success) {
             showNotification('Models unloaded and memory cleared', 'Success', 'success', 3000);
+            // Hide timer immediately after manual unload
+            const timerElement = document.getElementById('autoUnloadTimer');
+            if (timerElement) {
+                timerElement.style.display = 'none';
+            }
+            // Update timer status to reflect reset
+            setTimeout(() => updateAutoUnloadTimer(), 500);
         } else {
-            showNotification('Error: ' + result.error, 'Unload Failed', 'error');
+            showNotification('Error: ' + (result.error || 'Unknown error'), 'Unload Failed', 'error');
         }
     } catch (error) {
         console.error('Error unloading models:', error);
-        showNotification('Error unloading models', 'Error', 'error');
+        showNotification('Failed to unload models: ' + error.message, 'Error', 'error');
+    }
+}
+
+async function updateAutoUnloadTimer() {
+    try {
+        const response = await fetch('/api/comfyui/status');
+        if (!response.ok) return;
+        
+        const status = await response.json();
+        const timerElement = document.getElementById('autoUnloadTimer');
+        const timerText = document.getElementById('timerText');
+        
+        if (!timerElement || !timerText) return;
+        
+        if (status.timer_active && status.unload_in_seconds > 0) {
+            // Show timer with countdown
+            const minutes = Math.floor(status.unload_in_seconds / 60);
+            const seconds = status.unload_in_seconds % 60;
+            timerText.textContent = `Auto-unload in ${minutes}:${seconds.toString().padStart(2, '0')}`;
+            timerElement.style.display = 'flex';
+        } else {
+            // Hide timer when not active
+            timerElement.style.display = 'none';
+        }
+    } catch (error) {
+        console.error('Error updating timer:', error);
     }
 }
 
@@ -474,9 +513,13 @@ function startQueueUpdates() {
     // Clear tracking on startup to allow folder refresh for existing completions
     lastSeenCompletedIds.clear();
     
-    // Start polling
+    // Start polling queue and timer
     updateQueue();
-    queueUpdateInterval = setInterval(updateQueue, 1000);
+    updateAutoUnloadTimer();
+    queueUpdateInterval = setInterval(() => {
+        updateQueue();
+        updateAutoUnloadTimer();
+    }, 1000);
 }
 
 async function updateQueue() {
@@ -668,7 +711,10 @@ async function generateImage() {
         steps: parseInt(document.getElementById('steps').value),
         seed: document.getElementById('seed').value ? parseInt(document.getElementById('seed').value) : null,
         file_prefix: document.getElementById('filePrefix').value.trim() || 'comfyui',
-        subfolder: document.getElementById('subfolder').value.trim()
+        subfolder: document.getElementById('subfolder').value.trim(),
+        mcnl_lora: document.getElementById('mcnlLora').checked,
+        snofs_lora: document.getElementById('snofsLora').checked,
+        oface_lora: document.getElementById('ofaceLora').checked
     };
     
     try {
@@ -882,9 +928,8 @@ async function createNewFolder() {
 }
 
 async function setOutputFolder() {
-    // Set output folder for both single and batch modes
+    // Set output folder
     document.getElementById('subfolder').value = currentPath;
-    document.getElementById('batchSubfolder').value = currentPath;
     showNotification(`Output folder set to: ${currentPath || 'Root'}`, 'Output Folder Set', 'success', 3000);
 }
 
@@ -1000,6 +1045,12 @@ function prevImage() {
 
 // Metadata Rendering
 function renderMetadata(image) {
+    const loraStatus = [];
+    if (image.mcnl_lora) loraStatus.push('MCNL');
+    if (image.snofs_lora) loraStatus.push('Snofs');
+    if (image.oface_lora) loraStatus.push('OFace');
+    const loraText = loraStatus.length > 0 ? loraStatus.join(', ') : 'None';
+    
     return `
         <div class="metadata-grid">
             <div class="metadata-item metadata-prompt">
@@ -1017,6 +1068,10 @@ function renderMetadata(image) {
             <div class="metadata-item">
                 <div class="metadata-label">Seed</div>
                 <div class="metadata-value">${image.seed}</div>
+            </div>
+            <div class="metadata-item">
+                <div class="metadata-label">LoRAs</div>
+                <div class="metadata-value">${loraText}</div>
             </div>
             <div class="metadata-item">
                 <div class="metadata-label">Generated</div>
@@ -1042,6 +1097,9 @@ function importImageData() {
     document.getElementById('seed').value = currentImageData.seed || '';
     document.getElementById('filePrefix').value = currentImageData.file_prefix || 'comfyui';
     document.getElementById('subfolder').value = currentImageData.subfolder || '';
+    document.getElementById('mcnlLora').checked = currentImageData.mcnl_lora || false;
+    document.getElementById('snofsLora').checked = currentImageData.snofs_lora || false;
+    document.getElementById('ofaceLora').checked = currentImageData.oface_lora || false;
     
     // Close the modal
     closeImageModal();
@@ -1426,6 +1484,13 @@ function handleKeyboard(e) {
         } else if (e.key === 'Escape') {
             closeImageModal();
         }
+        return;
+    }
+    
+    // Ctrl+Enter to generate (works anywhere except in modals)
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        generateImage();
     }
 }
 
@@ -1441,599 +1506,8 @@ function formatDate(isoString) {
     return date.toLocaleString();
 }
 
-// Batch Generation Functions
-let currentInputMethod = 'manual';
-let parsedBatchData = [];
-
-function initializeBatchMode() {
-    // Input method tabs
-    document.querySelectorAll('.input-method-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const method = btn.getAttribute('data-method');
-            switchInputMethod(method);
-        });
-    });
-    
-    // Parse template button
-    document.getElementById('parseTemplateBtn').addEventListener('click', parseTemplateParameters);
-    
-    // Preview and generate buttons
-    document.getElementById('previewBatchBtn').addEventListener('click', previewBatch);
-    document.getElementById('generateBatchBtn').addEventListener('click', generateBatch);
-    document.getElementById('downloadCSVBtn').addEventListener('click', downloadBatchCSV);
-    
-    // File input change
-    document.getElementById('batchDataFile').addEventListener('change', handleFileUpload);
-    
-    // Parameter checkbox handlers
-    setupBatchParameterCheckboxes();
-}
-
-function setupBatchParameterCheckboxes() {
-    const paramFields = ['Width', 'Height', 'Steps', 'Seed', 'FilePrefix', 'Subfolder'];
-    
-    paramFields.forEach(field => {
-        const checkbox = document.getElementById(`batch${field}Param`);
-        const input = document.getElementById(`batch${field}ParamValue`);
-        const mainInput = document.getElementById(`batch${field}`);
-        
-        if (checkbox && input) {
-            checkbox.addEventListener('change', () => {
-                if (checkbox.checked) {
-                    input.style.display = 'block';
-                    if (mainInput) mainInput.disabled = true;
-                } else {
-                    input.style.display = 'none';
-                    if (mainInput) mainInput.disabled = false;
-                }
-            });
-        }
-    });
-}
-
-function switchInputMethod(method) {
-    currentInputMethod = method;
-    
-    // Update button states
-    document.querySelectorAll('.input-method-btn').forEach(btn => {
-        btn.classList.remove('active');
-        if (btn.getAttribute('data-method') === method) {
-            btn.classList.add('active');
-        }
-    });
-    
-    // Update content visibility
-    document.querySelectorAll('.input-method-content').forEach(content => {
-        content.style.display = 'none';
-    });
-    
-    const contentIds = {
-        'manual': 'manualEntry',
-        'textarea': 'textareaEntry',
-        'file': 'fileEntry'
-    };
-    
-    document.getElementById(contentIds[method]).style.display = 'block';
-}
-
-function extractParametersFromTemplate(template) {
-    // Extract all [parameter] placeholders from template
-    const regex = /\[([^\]]+)\]/g;
-    const parameters = new Set();
-    let match;
-    
-    while ((match = regex.exec(template)) !== null) {
-        parameters.add(match[1]);
-    }
-    
-    return Array.from(parameters);
-}
-
-function parseTemplateParameters() {
-    const template = document.getElementById('batchPromptTemplate').value.trim();
-    
-    if (!template) {
-        showAlert('Please enter a prompt template first');
-        return;
-    }
-    
-    const parameters = extractParametersFromTemplate(template);
-    
-    if (parameters.length === 0) {
-        showAlert('No parameters found. Use [parameter_name] syntax in your template.');
-        return;
-    }
-    
-    // Generate input fields for each parameter
-    const container = document.getElementById('manualParametersContainer');
-    const count = parseInt(document.getElementById('batchCount').value) || 3;
-    
-    let html = '<div style="margin-top: 1rem;">';
-    html += '<p style="color: var(--text-muted); margin-bottom: 1rem;">Enter values for each image (comma-separated):</p>';
-    
-    parameters.forEach(param => {
-        html += `
-            <div class="form-group">
-                <label for="param_${param}">${param}</label>
-                <input 
-                    type="text" 
-                    id="param_${param}" 
-                    placeholder="value1, value2, value3 (${count} values needed)"
-                    class="form-control batch-param-input"
-                    data-param="${param}"
-                >
-                <small style="color: var(--text-muted); display: block; margin-top: 0.25rem;">
-                    Enter ${count} comma-separated values
-                </small>
-            </div>
-        `;
-    });
-    
-    html += '</div>';
-    container.innerHTML = html;
-    
-    showNotification(`Found ${parameters.length} parameter(s): ${parameters.join(', ')}`, 'Parameters Detected', 'success', 4000);
-}
-
-function replaceParameters(template, paramValues) {
-    let result = template;
-    for (const [key, value] of Object.entries(paramValues)) {
-        const regex = new RegExp(`\\[${key}\\]`, 'g');
-        result = result.replace(regex, value);
-    }
-    return result;
-}
-
-function parseManualData() {
-    const template = document.getElementById('batchPromptTemplate').value.trim();
-    const parameters = extractParametersFromTemplate(template);
-    const count = parseInt(document.getElementById('batchCount').value) || 3;
-    
-    if (!template || parameters.length === 0) {
-        throw new Error('Invalid template or no parameters found');
-    }
-    
-    // Collect values from input fields
-    const paramLists = {};
-    for (const param of parameters) {
-        const input = document.getElementById(`param_${param}`);
-        if (!input) {
-            throw new Error(`Input field for parameter "${param}" not found. Click "Parse Template Parameters" first.`);
-        }
-        
-        const values = input.value.split(',').map(v => v.trim()).filter(v => v);
-        if (values.length !== count) {
-            throw new Error(`Parameter "${param}" needs exactly ${count} values (found ${values.length})`);
-        }
-        paramLists[param] = values;
-    }
-    
-    // Generate batch data
-    const batchData = [];
-    for (let i = 0; i < count; i++) {
-        const paramValues = {};
-        for (const param of parameters) {
-            paramValues[param] = paramLists[param][i];
-        }
-        batchData.push(paramValues);
-    }
-    
-    // Add parameterized fields if checkboxes are checked
-    addParameterizedFields(batchData, count);
-    
-    return batchData;
-}
-
-function addParameterizedFields(batchData, count) {
-    const paramFields = [
-        { name: 'width', checkbox: 'batchWidthParam', input: 'batchWidthParamValue', type: 'number' },
-        { name: 'height', checkbox: 'batchHeightParam', input: 'batchHeightParamValue', type: 'number' },
-        { name: 'steps', checkbox: 'batchStepsParam', input: 'batchStepsParamValue', type: 'number' },
-        { name: 'seed', checkbox: 'batchSeedParam', input: 'batchSeedParamValue', type: 'number' },
-        { name: 'file_prefix', checkbox: 'batchFilePrefixParam', input: 'batchFilePrefixParamValue', type: 'string' },
-        { name: 'subfolder', checkbox: 'batchSubfolderParam', input: 'batchSubfolderParamValue', type: 'string' }
-    ];
-    
-    paramFields.forEach(field => {
-        const checkbox = document.getElementById(field.checkbox);
-        const input = document.getElementById(field.input);
-        
-        if (checkbox && checkbox.checked && input && input.value.trim()) {
-            const values = input.value.split(',').map(v => v.trim()).filter(v => v);
-            
-            if (values.length !== count && values.length !== batchData.length) {
-                throw new Error(`${field.name} parameter needs exactly ${count} values (found ${values.length})`);
-            }
-            
-            // Add to each batch data entry
-            batchData.forEach((data, index) => {
-                let value = values[index];
-                
-                // Type conversion
-                if (field.type === 'number') {
-                    value = value === '' ? null : parseFloat(value);
-                } else if (field.type === 'boolean') {
-                    value = value.toLowerCase() === 'true' || value === '1';
-                }
-                
-                data[field.name] = value;
-            });
-        }
-    });
-}
-
-function parseCSV(csvText) {
-    const lines = csvText.trim().split('\n').map(line => line.trim()).filter(line => line);
-    if (lines.length < 2) {
-        throw new Error('CSV must have at least a header row and one data row');
-    }
-    
-    const headers = lines[0].split(',').map(h => h.trim());
-    const data = [];
-    
-    for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(',').map(v => v.trim());
-        if (values.length !== headers.length) {
-            throw new Error(`Row ${i + 1} has ${values.length} values but expected ${headers.length}`);
-        }
-        
-        const row = {};
-        headers.forEach((header, index) => {
-            row[header] = values[index];
-        });
-        data.push(row);
-    }
-    
-    return data;
-}
-
-function parseTextareaData() {
-    const text = document.getElementById('batchDataText').value.trim();
-    
-    if (!text) {
-        throw new Error('No data entered');
-    }
-    
-    // Try JSON first
-    if (text.startsWith('[') || text.startsWith('{')) {
-        try {
-            const data = JSON.parse(text);
-            const batchData = Array.isArray(data) ? data : [data];
-            // Parameterized fields from CSV/JSON are already in the data
-            return batchData;
-        } catch (e) {
-            throw new Error('Invalid JSON format: ' + e.message);
-        }
-    }
-    
-    // Try CSV
-    const csvData = parseCSV(text);
-    // CSV may already contain parameterized fields as columns
-    return csvData;
-}
-
-async function handleFileUpload(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    
-    try {
-        const text = await file.text();
-        const extension = file.name.split('.').pop().toLowerCase();
-        
-        if (extension === 'json') {
-            const data = JSON.parse(text);
-            parsedBatchData = Array.isArray(data) ? data : [data];
-            showNotification(`Loaded ${parsedBatchData.length} entries from JSON file`, 'File Loaded', 'success', 3000);
-        } else if (extension === 'csv' || extension === 'txt') {
-            parsedBatchData = parseCSV(text);
-            showNotification(`Loaded ${parsedBatchData.length} entries from CSV file`, 'File Loaded', 'success', 3000);
-        } else {
-            throw new Error('Unsupported file type. Use .json or .csv files.');
-        }
-    } catch (error) {
-        showNotification('Error loading file: ' + error.message, 'File Error', 'error');
-        parsedBatchData = [];
-    }
-}
-
-async function previewBatch() {
-    try {
-        const template = document.getElementById('batchPromptTemplate').value.trim();
-        
-        if (!template) {
-            showNotification('Please enter a prompt template', 'Missing Template', 'warning');
-            return;
-        }
-        
-        // Get batch data based on input method
-        let batchData;
-        if (currentInputMethod === 'manual') {
-            batchData = parseManualData();
-        } else if (currentInputMethod === 'textarea') {
-            batchData = parseTextareaData();
-        } else if (currentInputMethod === 'file') {
-            if (parsedBatchData.length === 0) {
-                showNotification('Please upload a file first', 'No File', 'warning');
-                return;
-            }
-            batchData = parsedBatchData;
-        }
-        
-        // Generate preview
-        const preview = document.getElementById('batchPreview');
-        let html = '<div style="display: flex; flex-direction: column; gap: 0.75rem;">';
-        
-        batchData.forEach((params, index) => {
-            const prompt = replaceParameters(template, params);
-            
-            // Build parameter info
-            let paramInfo = '';
-            if (params.width || params.height) {
-                paramInfo += `<span class="param-badge">${params.width || '?'}x${params.height || '?'}</span> `;
-            }
-            if (params.steps) {
-                paramInfo += `<span class="param-badge">${params.steps} steps</span> `;
-            }
-            if (params.seed) {
-                paramInfo += `<span class="param-badge">Seed: ${params.seed}</span> `;
-            }
-            if (params.file_prefix) {
-                paramInfo += `<span class="param-badge">Prefix: ${params.file_prefix}</span> `;
-            }
-            if (params.subfolder) {
-                paramInfo += `<span class="param-badge">Folder: ${params.subfolder}</span> `;
-            }
-            
-            html += `
-                <div style="padding: 0.75rem; background: var(--bg-primary); border-radius: 4px; border-left: 3px solid var(--primary);">
-                    <div style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.25rem;">Image ${index + 1}</div>
-                    <div style="color: var(--text-primary); margin-bottom: 0.5rem;">${escapeHtml(prompt)}</div>
-                    ${paramInfo ? `<div style="margin-top: 0.5rem;">${paramInfo}</div>` : ''}
-                </div>
-            `;
-        });
-        
-        html += '</div>';
-        html += `<div style="margin-top: 1rem; padding: 0.75rem; background: var(--accent); border-radius: 4px; text-align: center;">
-                    <strong>Total: ${batchData.length} images</strong>
-                 </div>`;
-        
-        preview.innerHTML = html;
-        
-        // Show download button if we have data
-        document.getElementById('downloadCSVBtn').style.display = 'inline-flex';
-        
-        showNotification('Batch preview generated successfully', 'Preview Ready', 'success', 3000);
-        
-    } catch (error) {
-        showNotification('Preview error: ' + error.message, 'Error', 'error');
-    }
-}
-
-function downloadBatchCSV() {
-    try {
-        const template = document.getElementById('batchPromptTemplate').value.trim();
-        
-        // Get batch data based on input method
-        let batchData;
-        if (currentInputMethod === 'manual') {
-            batchData = parseManualData();
-        } else if (currentInputMethod === 'textarea') {
-            batchData = parseTextareaData();
-        } else if (currentInputMethod === 'file') {
-            if (parsedBatchData.length === 0) {
-                showNotification('Please upload a file first', 'No File', 'warning');
-                return;
-            }
-            batchData = parsedBatchData;
-        }
-        
-        if (batchData.length === 0) {
-            showNotification('No data to download', 'Empty Data', 'warning');
-            return;
-        }
-        
-        // Convert to CSV with instructions
-        const parameters = extractParametersFromTemplate(template);
-        const csvLines = [];
-        
-        // Add instruction header
-        csvLines.push('# ComfyUI Batch Generation CSV');
-        csvLines.push('# Generated: ' + new Date().toLocaleString());
-        csvLines.push('#');
-        csvLines.push('# Template: ' + template);
-        csvLines.push('# Parameters: ' + parameters.join(', '));
-        csvLines.push('# Total variations: ' + batchData.length);
-        csvLines.push('#');
-        csvLines.push('# Usage Instructions:');
-        csvLines.push('# 1. Upload this file in the Batch Generation tab');
-        csvLines.push('# 2. Set your desired Width, Height, Steps, and other settings');
-        csvLines.push('# 3. Click "Generate Batch" to create all variations');
-        csvLines.push('#');
-        csvLines.push('# CSV Data:');
-        csvLines.push('');
-        
-        // Add CSV header
-        csvLines.push(parameters.join(','));
-        
-        // Add data rows
-        batchData.forEach(row => {
-            const values = parameters.map(param => {
-                const value = String(row[param] || '');
-                // Escape commas and quotes
-                if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-                    return '"' + value.replace(/"/g, '""') + '"';
-                }
-                return value;
-            });
-            csvLines.push(values.join(','));
-        });
-        
-        // Create download
-        const csvContent = csvLines.join('\n');
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        const url = URL.createObjectURL(blob);
-        
-        const timestamp = new Date().toISOString().slice(0, 10);
-        link.setAttribute('href', url);
-        link.setAttribute('download', `comfyui_batch_${timestamp}.csv`);
-        link.style.visibility = 'hidden';
-        
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        
-        showNotification('CSV file downloaded successfully', 'Downloaded', 'success', 3000);
-        
-    } catch (error) {
-        showNotification('Download error: ' + error.message, 'Error', 'error');
-    }
-}
-
-function showBatchConfirmDialog(imageCount) {
-    return new Promise((resolve) => {
-        const modal = document.getElementById('customDialog');
-        document.getElementById('dialogTitle').textContent = 'Confirm Batch Generation';
-        
-        // Get current values
-        const currentPrefix = document.getElementById('batchFilePrefix').value.trim() || 'batch';
-        const currentSubfolder = document.getElementById('batchSubfolder').value.trim();
-        
-        // Create custom dialog content
-        const dialogMessage = document.getElementById('dialogMessage');
-        dialogMessage.innerHTML = `
-            <p style="margin-bottom: 1rem;">Generate <strong>${imageCount}</strong> images with the following settings:</p>
-            <div class="form-group" style="margin-bottom: 1rem;">
-                <label for="dialogFilePrefix" style="display: block; margin-bottom: 0.5rem; font-weight: 500;">File Prefix</label>
-                <input 
-                    type="text" 
-                    id="dialogFilePrefix" 
-                    value="${currentPrefix}"
-                    placeholder="batch"
-                    class="form-control"
-                    style="width: 100%;"
-                >
-            </div>
-            <div class="form-group" style="margin-bottom: 0;">
-                <label for="dialogSubfolder" style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Output Folder</label>
-                <input 
-                    type="text" 
-                    id="dialogSubfolder" 
-                    value="${currentSubfolder}"
-                    placeholder="Leave empty for root"
-                    class="form-control"
-                    style="width: 100%;"
-                >
-                <small style="color: var(--text-muted); display: block; margin-top: 0.25rem;">Leave empty for root folder</small>
-            </div>
-        `;
-        
-        document.getElementById('dialogInput').style.display = 'none';
-        modal.style.display = 'flex';
-        
-        const confirmBtn = document.getElementById('dialogConfirmBtn');
-        const cancelBtn = document.getElementById('dialogCancelBtn');
-        
-        const cleanup = (result) => {
-            modal.style.display = 'none';
-            dialogMessage.innerHTML = '';
-            confirmBtn.removeEventListener('click', confirmHandler);
-            cancelBtn.removeEventListener('click', cancelHandler);
-            resolve(result);
-        };
-        
-        const confirmHandler = () => {
-            const file_prefix = document.getElementById('dialogFilePrefix').value.trim() || 'batch';
-            const subfolder = document.getElementById('dialogSubfolder').value.trim();
-            cleanup({ file_prefix, subfolder });
-        };
-        
-        const cancelHandler = () => cleanup(null);
-        
-        confirmBtn.addEventListener('click', confirmHandler);
-        cancelBtn.addEventListener('click', cancelHandler);
-        
-        // Focus first input
-        setTimeout(() => document.getElementById('dialogFilePrefix').focus(), 100);
-    });
-}
-
-async function generateBatch() {
-    try {
-        const template = document.getElementById('batchPromptTemplate').value.trim();
-        
-        if (!template) {
-            showNotification('Please enter a prompt template', 'Missing Template', 'warning');
-            return;
-        }
-        
-        // Get batch data based on input method
-        let batchData;
-        if (currentInputMethod === 'manual') {
-            batchData = parseManualData();
-        } else if (currentInputMethod === 'textarea') {
-            batchData = parseTextareaData();
-        } else if (currentInputMethod === 'file') {
-            if (parsedBatchData.length === 0) {
-                showNotification('Please upload a file first', 'No File', 'warning');
-                return;
-            }
-            batchData = parsedBatchData;
-        }
-        
-        if (batchData.length === 0) {
-            showNotification('No data to generate', 'No Data', 'warning');
-            return;
-        }
-        
-        // Show custom batch generation dialog with options
-        const batchOptions = await showBatchConfirmDialog(batchData.length);
-        
-        if (!batchOptions) return; // User cancelled
-        
-        // Collect shared parameters with user-confirmed values (only used if not parameterized per-image)
-        const sharedParams = {
-            width: parseInt(document.getElementById('batchWidth').value),
-            height: parseInt(document.getElementById('batchHeight').value),
-            steps: parseInt(document.getElementById('batchSteps').value),
-            seed: document.getElementById('batchSeed').value ? parseInt(document.getElementById('batchSeed').value) : null,
-            file_prefix: batchOptions.file_prefix,
-            subfolder: batchOptions.subfolder
-        };
-        
-        // Submit batch to backend
-        const response = await fetch('/api/queue/batch', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                template: template,
-                batch_data: batchData,
-                shared_params: sharedParams
-            })
-        });
-        
-        if (response.ok) {
-            const result = await response.json();
-            showNotification(`Successfully queued ${result.queued} jobs!`, 'Batch Queued', 'success', 4000);
-            
-            // Update queue immediately
-            updateQueue();
-        } else {
-            const error = await response.json();
-            showNotification('Error: ' + (error.error || 'Failed to queue batch'), 'Error', 'error');
-        }
-        
-    } catch (error) {
-        showNotification('Batch generation error: ' + error.message, 'Error', 'error');
-    }
-}
-
-// Initialize batch mode when DOM loads
+// Initialize when DOM loads
 document.addEventListener('DOMContentLoaded', function() {
-    initializeBatchMode();
     initializeAIFeatures();
 });
 
@@ -2042,7 +1516,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // ============================================================================
 
 let aiModels = { ollama: [], gemini: [] };
-let aiCurrentPromptSource = null; // 'single' or 'batch'
+let aiCurrentPromptSource = 'single';
 
 function initializeAIFeatures() {
     // Load available models
@@ -2053,14 +1527,6 @@ function initializeAIFeatures() {
         openAIEditModal('single');
     });
     
-    // Batch generation AI edit button
-    document.getElementById('editBatchPromptWithAI').addEventListener('click', () => {
-        openAIEditModal('batch');
-    });
-    
-    // AI Parameter Generator button
-    document.getElementById('aiGenerateParametersBtn').addEventListener('click', openAIParameterModal);
-    
     // AI Edit Modal events
     document.getElementById('aiProvider').addEventListener('change', updateAIModelList);
     document.getElementById('aiOptimizeBtn').addEventListener('click', aiOptimizePrompt);
@@ -2068,12 +1534,6 @@ function initializeAIFeatures() {
     document.getElementById('aiCopyPromptBtn').addEventListener('click', aiCopyCurrentPrompt);
     document.getElementById('aiModalCancelBtn').addEventListener('click', closeAIEditModal);
     document.getElementById('aiModalUseBtn').addEventListener('click', aiUseResult);
-    
-    // AI Parameter Modal events
-    document.getElementById('aiParamProvider').addEventListener('change', updateAIParamModelList);
-    document.getElementById('aiGenerateParamsBtn').addEventListener('click', aiGenerateParameters);
-    document.getElementById('aiParamModalCancelBtn').addEventListener('click', closeAIParameterModal);
-    document.getElementById('aiParamModalUseBtn').addEventListener('click', aiUseParameterResult);
     
     // Allow Enter key in suggestion input
     document.getElementById('aiSuggestion').addEventListener('keypress', (e) => {
@@ -2123,25 +1583,12 @@ function updateAIModelList() {
     }
 }
 
-function updateAIParamModelList() {
-    const provider = document.getElementById('aiParamProvider').value;
-    const modelSelect = document.getElementById('aiParamModel');
-    
-    const models = aiModels[provider] || [];
-    
-    if (models.length === 0) {
-        modelSelect.innerHTML = '<option value="">No models available</option>';
-    } else {
-        modelSelect.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
-    }
-}
+
 
 function openAIEditModal(source) {
     aiCurrentPromptSource = source;
     
-    const promptText = source === 'single' 
-        ? document.getElementById('prompt').value.trim()
-        : document.getElementById('batchPromptTemplate').value.trim();
+    const promptText = document.getElementById('prompt').value.trim();
     
     if (!promptText) {
         showNotification('Please enter a prompt first', 'Empty Prompt', 'warning');
@@ -2267,146 +1714,11 @@ function aiUseResult() {
         return;
     }
     
-    // Update the appropriate prompt field
-    if (aiCurrentPromptSource === 'single') {
-        document.getElementById('prompt').value = result;
-    } else if (aiCurrentPromptSource === 'batch') {
-        document.getElementById('batchPromptTemplate').value = result;
-    }
+    // Update the prompt field
+    document.getElementById('prompt').value = result;
     
     closeAIEditModal();
     showNotification('Prompt updated successfully', 'Updated', 'success', 3000);
 }
 
-// AI Parameter Generation
 
-function openAIParameterModal() {
-    const template = document.getElementById('batchPromptTemplate').value.trim();
-    
-    if (!template) {
-        showNotification('Please enter a prompt template first', 'Empty Template', 'warning');
-        return;
-    }
-    
-    // Extract parameters
-    const parameters = extractParametersFromTemplate(template);
-    if (parameters.length === 0) {
-        showNotification('No parameters found in template. Use [parameter_name] syntax.', 'No Parameters', 'warning');
-        return;
-    }
-    
-    // Reset form
-    document.getElementById('aiParamCount').value = 5;
-    document.getElementById('aiParamContext').value = '';
-    document.getElementById('aiParamResult').value = '';
-    document.querySelectorAll('input[name="aiContextType"]')[0].checked = true;
-    
-    // Show modal
-    document.getElementById('aiParameterModal').style.display = 'flex';
-}
-
-function closeAIParameterModal() {
-    document.getElementById('aiParameterModal').style.display = 'none';
-}
-
-async function aiGenerateParameters() {
-    const template = document.getElementById('batchPromptTemplate').value.trim();
-    const count = parseInt(document.getElementById('aiParamCount').value);
-    const context = document.getElementById('aiParamContext').value.trim();
-    const contextType = document.querySelector('input[name="aiContextType"]:checked').value;
-    const provider = document.getElementById('aiParamProvider').value;
-    const model = document.getElementById('aiParamModel').value;
-    
-    if (!model) {
-        showNotification('Please select a model', 'No Model Selected', 'warning');
-        return;
-    }
-    
-    if (!template) {
-        showNotification('Template is required', 'Missing Template', 'warning');
-        return;
-    }
-    
-    if (count < 1 || count > 50) {
-        showNotification('Count must be between 1 and 50', 'Invalid Count', 'warning');
-        return;
-    }
-    
-    // Collect batch parameters to provide context to AI
-    const batchParams = {
-        width: document.getElementById('batchWidth').value,
-        height: document.getElementById('batchHeight').value,
-        steps: document.getElementById('batchSteps').value,
-        seed: document.getElementById('batchSeed').value || 'random',
-        file_prefix: document.getElementById('batchFilePrefix').value,
-        subfolder: document.getElementById('batchSubfolder').value
-    };
-    
-    // Check which parameters are being varied per-image
-    const variedParams = [];
-    if (document.getElementById('batchWidthParam').checked) variedParams.push('width');
-    if (document.getElementById('batchHeightParam').checked) variedParams.push('height');
-    if (document.getElementById('batchStepsParam').checked) variedParams.push('steps');
-    if (document.getElementById('batchSeedParam').checked) variedParams.push('seed');
-    if (document.getElementById('batchFilePrefixParam').checked) variedParams.push('file_prefix');
-    if (document.getElementById('batchSubfolderParam').checked) variedParams.push('subfolder');
-    
-    // Show loading
-    document.getElementById('aiParamLoadingIndicator').style.display = 'block';
-    document.getElementById('aiGenerateParamsBtn').disabled = true;
-    
-    try {
-        const response = await fetch('/api/ai/generate-parameters', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                template,
-                count,
-                context: context || 'Generate diverse and creative variations',
-                context_type: contextType,
-                model,
-                provider,
-                batch_params: batchParams,
-                varied_params: variedParams
-            })
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            document.getElementById('aiParamResult').value = result.data;
-            showNotification('Parameters generated successfully!', 'Success', 'success', 3000);
-        } else {
-            showNotification('Error: ' + result.error, 'Generation Failed', 'error');
-        }
-    } catch (error) {
-        console.error('AI parameter generation error:', error);
-        showNotification('Network error occurred', 'Error', 'error');
-    } finally {
-        document.getElementById('aiParamLoadingIndicator').style.display = 'none';
-        document.getElementById('aiGenerateParamsBtn').disabled = false;
-    }
-}
-
-function aiUseParameterResult() {
-    const csvData = document.getElementById('aiParamResult').value.trim();
-    
-    if (!csvData) {
-        showNotification('No data to use', 'Empty Result', 'warning');
-        return;
-    }
-    
-    // Switch to textarea input method and populate it
-    switchInputMethod('textarea');
-    document.getElementById('batchDataText').value = csvData;
-    
-    // Try to parse it immediately
-    try {
-        parsedBatchData = parseCSV(csvData);
-        showNotification(`Loaded ${parsedBatchData.length} variations successfully`, 'Data Loaded', 'success', 3000);
-    } catch (error) {
-        showNotification('Warning: ' + error.message + ' - You may need to adjust the data.', 'Parse Warning', 'warning');
-    }
-    
-    closeAIParameterModal();
-}

@@ -12,83 +12,9 @@
       "title": "Save Image"
     }
   },
-  "75:37": {
-    "inputs": {
-      "unet_name": "qwen_image_fp8_e4m3fn.safetensors",
-      "weight_dtype": "default"
-    },
-    "class_type": "UNETLoader",
-    "_meta": {
-      "title": "Load Diffusion Model"
-    }
-  },
-  "75:38": {
-    "inputs": {
-      "clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
-      "type": "qwen_image",
-      "device": "default"
-    },
-    "class_type": "CLIPLoader",
-    "_meta": {
-      "title": "Load CLIP"
-    }
-  },
-  "75:66": {
-    "inputs": {
-      "shift": 3,
-      "model": [
-        "75:73",
-        0
-      ]
-    },
-    "class_type": "ModelSamplingAuraFlow",
-    "_meta": {
-      "title": "ModelSamplingAuraFlow"
-    }
-  },
-  "75:73": {
-    "inputs": {
-      "lora_name": "Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors",
-      "strength_model": 1,
-      "model": [
-        "75:37",
-        0
-      ]
-    },
-    "class_type": "LoraLoaderModelOnly",
-    "_meta": {
-      "title": "LoraLoaderModelOnly"
-    }
-  },
-  "75:6": {
-    "inputs": {
-      "text": "",
-      "clip": [
-        "75:38",
-        0
-      ]
-    },
-    "class_type": "CLIPTextEncode",
-    "_meta": {
-      "title": "CLIP Text Encode (Positive Prompt)"
-    }
-  },
-  "75:7": {
-    "inputs": {
-      "text": "",
-      "clip": [
-        "75:38",
-        0
-      ]
-    },
-    "class_type": "CLIPTextEncode",
-    "_meta": {
-      "title": "CLIP Text Encode (Negative Prompt)"
-    }
-  },
   "75:3": {
     "inputs": {
-      "seed": 1057138472335472,
+      "seed": 428303168680166,
       "steps": 4,
       "cfg": 1,
       "sampler_name": "euler",
@@ -116,6 +42,35 @@
       "title": "KSampler"
     }
   },
+  "75:8": {
+    "inputs": {
+      "samples": [
+        "75:3",
+        0
+      ],
+      "vae": [
+        "75:39",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "75:7": {
+    "inputs": {
+      "text": "",
+      "clip": [
+        "75:115:136",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Negative Prompt)"
+    }
+  },
   "75:58": {
     "inputs": {
       "width": 1024,
@@ -136,20 +91,365 @@
       "title": "Load VAE"
     }
   },
-  "75:8": {
+  "75:38": {
     "inputs": {
-      "samples": [
-        "75:3",
-        0
-      ],
-      "vae": [
-        "75:39",
+      "clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "75:37": {
+    "inputs": {
+      "unet_name": "qwen_image_fp8_e4m3fn.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "75:6": {
+    "inputs": {
+      "text": "",
+      "clip": [
+        "75:115:136",
         0
       ]
     },
-    "class_type": "VAEDecode",
+    "class_type": "CLIPTextEncode",
     "_meta": {
-      "title": "VAE Decode"
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "75:66": {
+    "inputs": {
+      "shift": 3,
+      "model": [
+        "75:73",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingAuraFlow",
+    "_meta": {
+      "title": "ModelSamplingAuraFlow"
+    }
+  },
+  "75:73": {
+    "inputs": {
+      "lora_name": "Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors",
+      "strength_model": 1,
+      "model": [
+        "75:115:135",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoraLoaderModelOnly"
+    }
+  },
+  "75:115:114": {
+    "inputs": {
+      "lora_name": "qwen_MCNL_v1.0.safetensors",
+      "strength_model": 1,
+      "strength_clip": 1,
+      "model": [
+        "75:115:121",
+        0
+      ],
+      "clip": [
+        "75:115:123",
+        0
+      ]
+    },
+    "class_type": "LoraLoader",
+    "_meta": {
+      "title": "Load LoRA"
+    }
+  },
+  "75:115:123": {
+    "inputs": {
+      "A or B": [
+        "75:115:115",
+        0
+      ],
+      "in": [
+        "75:38",
+        0
+      ]
+    },
+    "class_type": "easy ab",
+    "_meta": {
+      "title": "A or B"
+    }
+  },
+  "75:115:121": {
+    "inputs": {
+      "A or B": [
+        "75:115:115",
+        0
+      ],
+      "in": [
+        "75:37",
+        0
+      ]
+    },
+    "class_type": "easy ab",
+    "_meta": {
+      "title": "A or B"
+    }
+  },
+  "75:115:127": {
+    "inputs": {
+      "A or B": [
+        "75:115:130",
+        0
+      ],
+      "in": [
+        "75:115:124",
+        0
+      ]
+    },
+    "class_type": "easy ab",
+    "_meta": {
+      "title": "A or B"
+    }
+  },
+  "75:115:128": {
+    "inputs": {
+      "A or B": [
+        "75:115:130",
+        0
+      ],
+      "in": [
+        "75:115:122",
+        0
+      ]
+    },
+    "class_type": "easy ab",
+    "_meta": {
+      "title": "A or B"
+    }
+  },
+  "75:115:125": {
+    "inputs": {
+      "lora_name": "Qwen_Snofs_1_2.safetensors",
+      "strength_model": 1,
+      "strength_clip": 1,
+      "model": [
+        "75:115:128",
+        0
+      ],
+      "clip": [
+        "75:115:127",
+        0
+      ]
+    },
+    "class_type": "LoraLoader",
+    "_meta": {
+      "title": "Load LoRA"
+    }
+  },
+  "75:115:122": {
+    "inputs": {
+      "boolean": [
+        "75:115:115",
+        0
+      ],
+      "on_true": [
+        "75:115:114",
+        0
+      ],
+      "on_false": [
+        "75:115:121",
+        1
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "75:115:124": {
+    "inputs": {
+      "boolean": [
+        "75:115:115",
+        0
+      ],
+      "on_true": [
+        "75:115:114",
+        1
+      ],
+      "on_false": [
+        "75:115:123",
+        1
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "75:115:132": {
+    "inputs": {
+      "A or B": [
+        "75:115:131",
+        0
+      ],
+      "in": [
+        "75:115:126",
+        0
+      ]
+    },
+    "class_type": "easy ab",
+    "_meta": {
+      "title": "A or B"
+    }
+  },
+  "75:115:133": {
+    "inputs": {
+      "A or B": [
+        "75:115:131",
+        0
+      ],
+      "in": [
+        "75:115:129",
+        0
+      ]
+    },
+    "class_type": "easy ab",
+    "_meta": {
+      "title": "A or B"
+    }
+  },
+  "75:115:129": {
+    "inputs": {
+      "boolean": [
+        "75:115:130",
+        0
+      ],
+      "on_true": [
+        "75:115:125",
+        0
+      ],
+      "on_false": [
+        "75:115:128",
+        1
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "75:115:126": {
+    "inputs": {
+      "boolean": [
+        "75:115:130",
+        0
+      ],
+      "on_true": [
+        "75:115:125",
+        1
+      ],
+      "on_false": [
+        "75:115:127",
+        1
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "75:115:135": {
+    "inputs": {
+      "boolean": [
+        "75:115:131",
+        0
+      ],
+      "on_true": [
+        "75:115:134",
+        0
+      ],
+      "on_false": [
+        "75:115:133",
+        1
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "75:115:136": {
+    "inputs": {
+      "boolean": [
+        "75:115:131",
+        0
+      ],
+      "on_true": [
+        "75:115:134",
+        1
+      ],
+      "on_false": [
+        "75:115:132",
+        1
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "75:115:134": {
+    "inputs": {
+      "lora_name": "[QWEN] OFace - gasm.safetensors",
+      "strength_model": 1,
+      "strength_clip": 1,
+      "model": [
+        "75:115:133",
+        0
+      ],
+      "clip": [
+        "75:115:132",
+        0
+      ]
+    },
+    "class_type": "LoraLoader",
+    "_meta": {
+      "title": "Load LoRA"
+    }
+  },
+  "75:115:131": {
+    "inputs": {
+      "value": false
+    },
+    "class_type": "easy boolean",
+    "_meta": {
+      "title": "OFace LoRA Bool"
+    }
+  },
+  "75:115:130": {
+    "inputs": {
+      "value": false
+    },
+    "class_type": "easy boolean",
+    "_meta": {
+      "title": "Snofs LoRA Bool"
+    }
+  },
+  "75:115:115": {
+    "inputs": {
+      "value": false
+    },
+    "class_type": "easy boolean",
+    "_meta": {
+      "title": "MCNL LoRA Bool"
     }
   }
 }

@@ -29,7 +29,8 @@ MAX_COMPLETED_HISTORY = 50
 queue_lock = threading.Lock()
 active_generation = None
 last_queue_empty_time = None  # Track when queue became empty
-UNLOAD_DELAY_SECONDS = 60  # Wait 60 seconds after queue empty before unloading
+timer_stopped = False  # Flag to prevent timer restart after unload
+UNLOAD_DELAY_SECONDS = 300  # Wait 300 seconds (5 minutes) after queue empty before unloading
 
 # Initialize ComfyUI client and AI assistant
 comfyui_client = ComfyUIClient(server_address="127.0.0.1:8188")
@@ -129,7 +130,7 @@ def save_queue_state():
         print(f"Error saving queue state: {e}")
 
 
-def add_metadata_entry(image_path, prompt, width, height, steps, seed, file_prefix, subfolder):
+def add_metadata_entry(image_path, prompt, width, height, steps, seed, file_prefix, subfolder, mcnl_lora=False, snofs_lora=False, oface_lora=False):
     """Add a new metadata entry"""
     metadata = load_metadata()
     entry = {
@@ -143,7 +144,10 @@ def add_metadata_entry(image_path, prompt, width, height, steps, seed, file_pref
         "height": height,
         "steps": steps,
         "seed": seed,
-        "file_prefix": file_prefix
+        "file_prefix": file_prefix,
+        "mcnl_lora": mcnl_lora,
+        "snofs_lora": snofs_lora,
+        "oface_lora": oface_lora
     }
     metadata.append(entry)
     save_metadata(metadata)
@@ -152,7 +156,7 @@ def add_metadata_entry(image_path, prompt, width, height, steps, seed, file_pref
 
 def process_queue():
     """Background thread to process the generation queue"""
-    global active_generation, generation_queue, completed_jobs, last_queue_empty_time
+    global active_generation, generation_queue, completed_jobs, last_queue_empty_time, timer_stopped
     
     while True:
         job = None
@@ -163,6 +167,7 @@ def process_queue():
                 active_generation = job
                 job['status'] = 'generating'
                 last_queue_empty_time = None  # Reset empty timer when processing
+                timer_stopped = False  # Allow timer to start again when queue becomes empty
         
         if job:
             try:
@@ -184,6 +189,9 @@ def process_queue():
                     steps=job['steps'],
                     cfg=1.0,
                     seed=seed,
+                    mcnl_lora=job.get('mcnl_lora', False),
+                    snofs_lora=job.get('snofs_lora', False),
+                    oface_lora=job.get('oface_lora', False),
                     output_path=str(output_path),
                     wait=True
                 )
@@ -197,7 +205,10 @@ def process_queue():
                     job['steps'],
                     seed,
                     file_prefix,
-                    subfolder
+                    subfolder,
+                    job.get('mcnl_lora', False),
+                    job.get('snofs_lora', False),
+                    job.get('oface_lora', False)
                 )
                 
                 job['status'] = 'completed'
@@ -223,6 +234,7 @@ def process_queue():
                     completed_jobs.pop()
                 
                 active_generation = None
+                # Don't reset timer here - let it continue if queue is empty
             
             # Save queue state after job completes
             save_queue_state()
@@ -234,10 +246,10 @@ def process_queue():
             if is_queue_empty:
                 current_time = time.time()
                 
-                if last_queue_empty_time is None:
+                if last_queue_empty_time is None and not timer_stopped:
                     last_queue_empty_time = current_time
                     print(f"Queue empty. Will unload models in {UNLOAD_DELAY_SECONDS} seconds if queue stays empty.")
-                elif current_time - last_queue_empty_time >= UNLOAD_DELAY_SECONDS:
+                elif last_queue_empty_time is not None and current_time - last_queue_empty_time >= UNLOAD_DELAY_SECONDS:
                     # Queue has been empty for the delay period - unload models
                     print("Queue empty for delay period. Unloading models and clearing memory...")
                     try:
@@ -247,8 +259,9 @@ def process_queue():
                     except Exception as e:
                         print(f"Error unloading models: {e}")
                     
-                    # Reset timer so we don't keep trying to unload
-                    last_queue_empty_time = current_time + 3600  # Wait 1 hour before trying again
+                    # Stop the timer permanently until new job is queued
+                    last_queue_empty_time = None
+                    timer_stopped = True
             
             time.sleep(0.5)
 
@@ -274,6 +287,7 @@ def index():
 
 @app.route('/api/queue', methods=['POST'])
 def add_to_queue():
+    global timer_stopped
     """Add a new generation job to the queue"""
     data = request.json
     
@@ -286,70 +300,22 @@ def add_to_queue():
         'seed': data.get('seed'),
         'file_prefix': data.get('file_prefix', 'comfyui'),
         'subfolder': data.get('subfolder', ''),
+        'mcnl_lora': data.get('mcnl_lora', False),
+        'snofs_lora': data.get('snofs_lora', False),
+        'oface_lora': data.get('oface_lora', False),
         'status': 'queued',
         'added_at': datetime.now().isoformat()
     }
     
     with queue_lock:
         generation_queue.insert(0, job)  # Add to front of queue
+        timer_stopped = False  # Allow timer to start when this job completes
     
     save_queue_state()
     return jsonify({'success': True, 'job_id': job['id']})
 
 
-@app.route('/api/queue/batch', methods=['POST'])
-def add_batch_to_queue():
-    """Add multiple generation jobs from batch template"""
-    data = request.json
-    template = data.get('template', '')
-    batch_data = data.get('batch_data', [])
-    shared_params = data.get('shared_params', {})
-    
-    if not template or not batch_data:
-        return jsonify({'error': 'Template and batch data required'}), 400
-    
-    jobs_queued = 0
-    
-    # Generate prompts and queue each job
-    for params in batch_data:
-        # Separate prompt parameters from override parameters
-        prompt_params = {}
-        override_params = {}
-        
-        for key, value in params.items():
-            # Check if this is a known override parameter
-            if key in ['width', 'height', 'steps', 'seed', 'file_prefix', 'subfolder']:
-                override_params[key] = value
-            else:
-                # It's a prompt template parameter
-                prompt_params[key] = value
-        
-        # Replace parameters in template with prompt parameters only
-        prompt = template
-        for key, value in prompt_params.items():
-            prompt = prompt.replace(f'[{key}]', str(value))
-        
-        # Build job with per-image overrides or shared params
-        job = {
-            'id': str(uuid.uuid4()),
-            'prompt': prompt,
-            'width': int(override_params.get('width', shared_params.get('width', 1024))),
-            'height': int(override_params.get('height', shared_params.get('height', 1024))),
-            'steps': int(override_params.get('steps', shared_params.get('steps', 4))),
-            'seed': override_params.get('seed', shared_params.get('seed')),  # Per-image or shared seed
-            'file_prefix': override_params.get('file_prefix', shared_params.get('file_prefix', 'batch')),
-            'subfolder': override_params.get('subfolder', shared_params.get('subfolder', '')),
-            'status': 'queued',
-            'added_at': datetime.now().isoformat()
-        }
-        
-        with queue_lock:
-            generation_queue.insert(0, job)  # Add to front of queue
-        
-        jobs_queued += 1
-    
-    save_queue_state()
-    return jsonify({'success': True, 'queued': jobs_queued})
+
 
 
 @app.route('/api/queue', methods=['GET'])
@@ -646,29 +612,7 @@ def suggest_prompt_edit():
     return jsonify(result)
 
 
-@app.route('/api/ai/generate-parameters', methods=['POST'])
-def generate_batch_parameters():
-    """Generate batch parameters using AI"""
-    data = request.json
-    template = data.get('template', '').strip()
-    count = data.get('count', 5)
-    context = data.get('context', '').strip()
-    context_type = data.get('context_type', 'full')  # 'full', 'parameters', 'custom'
-    model = data.get('model', 'llama2')
-    provider = data.get('provider', 'ollama')
-    batch_params = data.get('batch_params', {})
-    varied_params = data.get('varied_params', [])
-    
-    if not template:
-        return jsonify({'success': False, 'error': 'Template required'}), 400
-    
-    if count < 1 or count > 100:
-        return jsonify({'success': False, 'error': 'Count must be between 1 and 100'}), 400
-    
-    result = ai_assistant.generate_batch_parameters(
-        template, count, context, context_type, model, provider, batch_params, varied_params
-    )
-    return jsonify(result)
+
 
 
 # ComfyUI Memory Management Endpoints
@@ -676,9 +620,14 @@ def generate_batch_parameters():
 @app.route('/api/comfyui/unload', methods=['POST'])
 def unload_comfyui_models():
     """Manually unload all ComfyUI models and clear memory"""
+    global last_queue_empty_time, timer_stopped
     try:
         comfyui_client.unload_models()
         comfyui_client.clear_cache()
+        # Stop timer permanently until new job is queued
+        with queue_lock:
+            last_queue_empty_time = None
+            timer_stopped = True
         return jsonify({
             'success': True,
             'message': 'Models unloaded and memory cleared'
@@ -697,18 +646,23 @@ def get_comfyui_status():
     
     with queue_lock:
         is_queue_empty = len(generation_queue) == 0 and active_generation is None
+        empty_time = last_queue_empty_time
     
     status = {
         'queue_empty': is_queue_empty,
         'auto_unload_enabled': True,
-        'unload_delay_seconds': UNLOAD_DELAY_SECONDS
+        'unload_delay_seconds': UNLOAD_DELAY_SECONDS,
+        'timer_active': False,
+        'unload_in_seconds': 0
     }
     
-    if is_queue_empty and last_queue_empty_time is not None:
-        elapsed = time.time() - last_queue_empty_time
+    if is_queue_empty and empty_time is not None:
+        current_time = time.time()
+        elapsed = current_time - empty_time
         if elapsed < UNLOAD_DELAY_SECONDS:
-            status['unload_in_seconds'] = int(UNLOAD_DELAY_SECONDS - elapsed)
-        else:
+            status['timer_active'] = True
+            status['unload_in_seconds'] = max(0, int(UNLOAD_DELAY_SECONDS - elapsed))
+        elif elapsed < UNLOAD_DELAY_SECONDS + 10:  # Show "unloaded" for 10 seconds
             status['models_unloaded'] = True
     
     return jsonify(status)

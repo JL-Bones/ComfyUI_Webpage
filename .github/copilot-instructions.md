@@ -1,7 +1,13 @@
 # ComfyUI Web Interface - AI Agent Instructions
 
 ## Project Overview
-Flask-based web UI for ComfyUI image generation with AI-assisted prompting, batch processing, queue management, and file organization. **Requires ComfyUI server at `http://127.0.0.1:8188`**. Only dependency: Flask. Uses Qwen Image model workflow (4-step lightning generation).
+Flask-based web UI for ComfyUI image generation with AI-assisted prompting, queue management, and file organization. **Requires ComfyUI server at `http://127.0.0.1:8188`**. Only dependency: Flask. Uses Qwen Image model workflow (4-step lightning generation).
+
+**Recent Updates:**
+- LoRA control system added (MCNL, Snofs, OFace with keyword hints)
+- Generate button moved to prompt area with Ctrl+Enter shortcut
+- Queue sidebar collapse now adjusts main content width (no empty space)
+- Mobile-first responsive design with touch-optimized controls
 
 ## Architecture (Three-Layer System)
 
@@ -12,10 +18,10 @@ Python stdlib wrapper (urllib, json). Modifies workflow JSON with hardcoded node
 - `75:3` - Sampler (KSampler)
 
 **2. Flask Backend** (`app.py`)  
-Queue processor (LIFO display, FIFO execution), metadata storage, AI integration. Serves on `0.0.0.0:4879`. Background daemon thread processes queue sequentially. Model auto-unload after 60s idle.
+Queue processor (LIFO display, FIFO execution), metadata storage, AI integration. Serves on `0.0.0.0:4879`. Background daemon thread processes queue sequentially. 5-minute auto-unload with countdown timer.
 
 **3. Frontend** (`templates/index.html`, `static/`)  
-Vanilla JS SPA with collapsible mobile UI, custom modals (no browser dialogs), toast notifications, 1s polling.
+Vanilla JS SPA with collapsible mobile UI, custom modals (no browser dialogs), toast notifications, 1s polling, countdown timer. Generate button positioned next to prompt with Ctrl+Enter keyboard shortcut.
 
 **Data Flow:**  
 ```
@@ -23,6 +29,9 @@ User → Queue (front insert) → Thread (end pop, oldest first) → ComfyUI →
          ↓ 1s poll                                                           ↓ auto-refresh
     3-section UI (queued/active/completed)                          Folder browser + thumbnails
 ```
+
+**LoRA System:**  
+Three boolean controls (MCNL, Snofs, OFace) map to workflow nodes `75:115:115`, `75:115:130`, `75:115:131`. Each has keyword hints for user guidance. Values stored in metadata and passed through entire generation pipeline.
 
 ## Critical Patterns
 
@@ -48,12 +57,22 @@ with queue_lock:
 - Always await `updateQueue()` for immediate UI feedback
 - Track seen completions with `lastSeenCompletedIds` Set to trigger folder refresh once per new completion
 
+### Desktop Sidebar Collapse
+Queue sidebar collapses from 320px to 40px (not translateX). Main content expands smoothly via CSS transitions. Hidden elements use `opacity: 0` + `pointer-events: none`. Only toggle button remains visible when collapsed.
+
+```css
+.queue-sidebar { width: 320px; transition: width 0.3s ease; }
+.queue-sidebar.collapsed { width: 40px; }
+.main-content { flex: 1; transition: margin-left 0.3s ease; }
+```
+
 ### Mobile Optimization
-- Queue sidebar: Fixed overlay on mobile (≤768px), collapsed by default
+- Queue sidebar: Fixed overlay on mobile (≤768px), uses `transform: translateX(-100%)`
 - Hamburger menu toggles sidebar (`toggleMobileMenu()` with `stopPropagation()`)
 - Collapsible sections: `.collapsible-header` + `.collapsible-content` with `.active` class
 - Touch targets: Min 44px height, increased padding on mobile
-- Tabs: "Single", "Batch", "Browser" (shortened for mobile)
+- Tabs: "Single", "Browser" (shortened for mobile)
+- Prompt container stacks vertically, generate button becomes full-width horizontal
 
 ### File Naming (Auto-Increment)
 ```python
@@ -63,10 +82,10 @@ def get_next_filename(prefix: str, subfolder: str = "") -> tuple:
 ```
 
 ### Metadata Storage
-Flat JSON array in `outputs/metadata.json`: `id, filename, path, subfolder, timestamp, prompt, width, height, steps, seed, file_prefix`. No negative prompt. CFG fixed at 1.0 for Qwen Image model compatibility.
+Flat JSON array in `outputs/metadata.json`: `id, filename, path, subfolder, timestamp, prompt, width, height, steps, seed, file_prefix, mcnl_lora, snofs_lora, oface_lora`. No negative prompt. CFG fixed at 1.0 for Qwen Image model compatibility.
 
 ### AI Integration (`ai_assistant.py`)
-Dual provider: Ollama (local, port 11434) and Gemini (API key from `.env`). Models kept loaded 60s after use. Context-aware batch generation receives `batch_params` and `varied_params` for intelligent suggestions.
+Dual provider: Ollama (local, port 11434) and Gemini (API key from `.env`). Models unload immediately after use (`keep_alive: 0` for Ollama). Only prompt optimization/editing supported (batch generation removed).
 
 ### Custom Modals (No Browser Dialogs)
 ```javascript
@@ -116,25 +135,31 @@ python -m py_compile <file>      # Check syntax
 ## Key API Endpoints
 
 - `POST /api/queue` - Add job (single generation)
-- `POST /api/queue/batch` - Add multiple jobs with template `[parameter]` replacement
 - `GET /api/queue` - Returns `{queue: [], active: {}, completed: []}`
 - `DELETE /api/queue/<job_id>` - Remove queued or completed job (not active)
 - `POST /api/queue/clear` - Clears queued items only (preserves completed history)
 - `GET /api/browse?path=<subfolder>` - Browse folder with metadata (relative_path includes subfolder)
 - `POST /api/folder` - Create subfolder
 - `POST /api/move` / `POST /api/delete` - Batch operations with conflict resolution
-- `POST /api/ai/optimize` / `POST /api/ai/suggest` - AI prompt editing
-- `POST /api/ai/generate-parameters` - Generate CSV batch data (context-aware)
-- `POST /api/comfyui/unload` - Free RAM/VRAM/cache (manual)
+- `POST /api/ai/optimize` / `POST /api/ai/suggest` - AI prompt editing (single mode only)
+- `GET /api/ai/models` - Get available models (Ollama + Gemini)
+- `POST /api/comfyui/unload` - Free RAM/VRAM/cache (manual, resets auto-unload timer)
+- `GET /api/comfyui/status` - Get timer status (timer_active, unload_in_seconds)
 
-**Auto-unload:** ComfyUI models unload after 60s idle. Ollama models unload after 60s via `keep_alive: '60s'`.
+**Auto-unload:** ComfyUI models unload after 5 minutes (300s) idle with countdown timer in UI. Ollama models unload immediately (`keep_alive: 0`). Manual unload resets timer.
 
-**Response Format:** All write endpoints return JSON with `{success: bool, ...}`. Always check `result.success` in frontend.
+**Response Format:** All write endpoints return JSON with `{success: bool, ...}`. Always check `result.success` in frontend. ComfyUI `/free` endpoint returns empty response - handle gracefully.
 
 ## Project-Specific Conventions
 
-**Batch Generation:**  
-Template syntax: `[parameter_name]`. Per-image parameters via checkboxes enable comma-separated values or CSV columns (width, height, steps, seed, file_prefix, subfolder).
+**Auto-Unload Timer:**
+- 5-minute countdown starts when queue becomes empty
+- Visual timer displayed in queue sidebar (`#autoUnloadTimer`)
+- Updates every second via `/api/comfyui/status`
+- Formatted as `MM:SS` (e.g., "5:00", "4:59")
+- Hides when timer stops or queue has jobs
+- Manual unload sets `last_queue_empty_time = None` to stop timer
+- Backend uses `UNLOAD_DELAY_SECONDS = 300`
 
 **Mobile Sidebar:**  
 - Prevent click propagation: `event.stopPropagation()` on toggle
@@ -148,19 +173,35 @@ Always clickable via `pointer-events: auto` and `z-index: 10` on close button, n
 Fullscreen zoom (100-500%), keyboard (←/→/A/D/+/-/0/Space), autoplay (0.5-60s), import params to form.
 
 **Output Folder Fields:**  
-Both `#subfolder` and `#batchSubfolder` must be editable (no readonly) and populated by `setOutputFolder()`.
+`#subfolder` must be editable (no readonly) and populated by `setOutputFolder()`.
+
+## Keyboard Shortcuts
+
+**Anywhere (except in modals):**
+- `Ctrl+Enter` (or `Cmd+Enter`) - Trigger generation
+
+**Fullscreen Viewer:**
+- `←` / `→` or `A` / `D` - Navigate images
+- `+` / `-` - Zoom in/out
+- `0` - Reset zoom to 100%
+- `Space` - Toggle autoplay
+- `Esc` - Exit fullscreen
+
+**Image Modal:**
+- `←` / `→` - Previous/next image
+- `Esc` - Close modal
 
 ## Common Modifications
 
 **Add Generation Parameter:**  
-1. HTML input in `templates/index.html` (both single and batch forms)
-2. Capture in `generateImage()` and batch generation (script.js)  
-3. Add to job dict in `add_to_queue()` and `add_batch_to_queue()` (app.py)  
+1. HTML input in `templates/index.html` (single form only)
+2. Capture in `generateImage()` (script.js)  
+3. Add to job dict in `add_to_queue()` (app.py)  
 4. Add to `modify_workflow()` and `generate_image()` signatures (comfyui_client.py)
 5. Update workflow node in `modify_workflow()` using appropriate node ID from `Imaginer.json`
 6. Store in `add_metadata_entry()` signature (app.py)
 7. Display in `renderMetadata()` (script.js)
-8. Add to batch param fields array if supporting per-image variation
+8. Update `importImageData()` (script.js) to import the value
 
 **Change Server Address:**  
 Update TWO places: `app.py` line ~37, `comfyui_client.py` line ~18.
@@ -169,12 +210,23 @@ Update TWO places: `app.py` line ~37, `comfyui_client.py` line ~18.
 1. Export workflow from ComfyUI as JSON → save as `Imaginer.json`
 2. Find node IDs for: prompt input, dimensions, sampler settings
 3. Update node IDs in `comfyui_client.py:modify_workflow()` method
-4. Test with single generation before attempting batch
+4. Test with single generation
 
 **Add Mobile Collapsible Section:**  
 1. HTML: `<button class="collapsible-header" data-target="id">...</button>`  
 2. HTML: `<div class="collapsible-content active" id="id">...</div>`  
 3. JS: `initializeCollapsibleSections()` handles all automatically
+
+**Error Handling for ComfyUI:**  
+ComfyUI's `/free` endpoint may return empty responses. Always handle gracefully:
+```python
+response_text = response.read().decode('utf-8').strip()
+if response_text:
+    try:
+        result = json.loads(response_text)
+    except json.JSONDecodeError:
+        pass  # Empty or non-JSON response is OK
+```
 
 ## File Structure
 ```
@@ -197,6 +249,7 @@ Update TWO places: `app.py` line ~37, `comfyui_client.py` line ~18.
 - `@media (max-width: 480px)` - Extra small devices
 - Queue sidebar: `position: fixed`, `transform: translateX(-100%)`
 - Collapsible sections: `max-height` transitions with `.active` class
+- Tabs: "Single", "Browser" (no batch tab)
 
 ## State Variables (script.js)
 
@@ -210,6 +263,7 @@ let zoomLevel = 1;                // Fullscreen zoom (1-5x)
 let autoplayTimer = null;         // Autoplay setTimeout ID
 let isAutoplayActive = false;     // Autoplay on/off state
 let lastSeenCompletedIds = new Set(); // Track seen completions for folder refresh
+let aiCurrentPromptSource = 'single';  // Always 'single' (batch removed)
 ```
 
 ## Integration Notes

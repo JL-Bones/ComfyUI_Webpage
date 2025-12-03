@@ -1,34 +1,44 @@
 # ComfyUI Web Interface
 
-Flask-based web UI for ComfyUI with AI-assisted prompting, batch generation, queue management, and file organization. Optimized for Qwen Image model with 4-step lightning generation.
+Flask-based web UI for ComfyUI with AI-assisted prompting, queue management, and file organization. Optimized for Qwen Image model with 4-step lightning generation.
 
 ## Features
 
-- 🎨 **Dark-themed interface** with tab navigation (Single/Batch/Browser)
+- 🎨 **Dark-themed interface** with tab navigation (Single/Browser)
 - 📱 **Mobile-optimized** - Collapsible menus, touch-friendly controls, responsive design
 - 🤖 **AI assistance** - Prompt optimization with Ollama or Gemini
+- 🎛️ **LoRA controls** - Three toggle switches with keyword hints (MCNL, Snofs, OFace)
+- ⌨️ **Keyboard shortcuts** - Ctrl+Enter to generate, fullscreen navigation
 - 📋 **Persistent queue** - Shared across users, survives restarts, shows count badge
-- 📦 **Batch generation** - Template syntax `[parameter]` with CSV/JSON import, per-image parameters
 - 📁 **Folder management** - Create, browse, move, delete with breadcrumbs
 - 🖼️ **Image viewer** - Fullscreen with zoom (100-500%), autoplay, keyboard nav, touch gestures
 - 💾 **Metadata tracking** - All generation params saved automatically
-- 🧠 **Auto-unload models** - Frees RAM/VRAM 60s after queue empties (ComfyUI & Ollama)
+- ⏱️ **Auto-unload with timer** - 5-minute countdown timer, frees RAM/VRAM/cache when idle
 - 🔔 **Toast notifications** - Custom modals, no browser dialogs
 
 See [AI_FEATURES.md](AI_FEATURES.md) for AI setup and usage.
 
-## Mobile Features
+## Desktop & Mobile Features
 
+### Desktop
+- **Collapsible Queue Sidebar** - Click chevron to collapse sidebar from 320px to 40px
+- **Responsive Layout** - Main content expands smoothly when sidebar collapses (no empty space)
+- **Generate Button** - Positioned next to prompt box for quick access
+- **Keyboard Shortcuts** - Full keyboard navigation support
+
+### Mobile
 - **Responsive Design** - Optimized layouts for screens ≤768px (tablets) and ≤480px (phones)
-- **Collapsible Menu** - Hamburger button (☰) in header toggles queue sidebar
-- **Collapsible Sections** - Parameters and batch options collapse to save screen space
+- **Collapsible Menu** - Hamburger button (☰) in header toggles queue sidebar overlay
+- **Collapsible Sections** - Parameters and LoRA settings collapse to save screen space
 - **Touch-Friendly** - Minimum 44px touch targets, increased button spacing
-- **Single-Column Layout** - Parameter grids stack vertically for easy scrolling
+- **Single-Column Layout** - Parameter grids and prompt controls stack vertically
 - **Fullscreen Viewer** - Pinch-to-zoom, swipe navigation, optimized controls
-- **Auto-Collapse** - Queue sidebar collapses by default, reopens with menu button
-- **Tab Navigation** - Compact tabs: "Single", "Batch", "Browser"
+- **Tab Navigation** - Compact tabs: "Single", "Browser"
 
 ## Keyboard Shortcuts
+
+**Anywhere (except in modals):**
+- `Ctrl+Enter` (or `Cmd+Enter`) - Generate image
 
 **Fullscreen Viewer:**
 - `←` / `→` or `A` / `D` - Navigate images
@@ -64,90 +74,27 @@ ComfyUI must be running on `http://127.0.0.1:8188`
 
 ### Tab Navigation
 
-The interface has three tabs:
+The interface has two tabs:
 - **Single Generation**: Generate individual images with full parameter control
-- **Batch Generation**: Generate multiple images with template-based parameter replacement
 - **Image Browser**: Browse, organize, and manage your generated images
 
 ### Generate Images (Single Mode)
 
 1. Navigate to the **Single Generation** tab (default)
-2. Enter your prompt in the text area
+2. Enter your prompt in the text area (or press `Ctrl+Enter` to generate quickly)
 3. Adjust parameters:
    - **Width/Height**: Image dimensions (default: 1024×1024)
    - **Steps**: Sampling steps (default: 4)
    - **Seed**: Random seed (leave empty for random, ✕ button to clear)
    - **File Prefix**: Custom filename prefix (default: "comfyui")
    - **Subfolder**: Target folder for output (optional, set from browser)
-4. Click "Generate" to add to queue
-5. Watch progress in the left sidebar queue panel
-6. Completed items show thumbnail images - click to jump to Image Browser
-
-### Batch Generation
-
-Generate multiple images with parameter variations using templates:
-
-**1. Create a Template Prompt**
-- Use `[parameter_name]` syntax for values to be replaced
-- Example: `"A girl in a [dress_color] dress with [accessory]"`
-
-**2. Choose Input Method**
-
-Three ways to provide parameter values:
-
-**Manual Entry:**
-1. Click "Parse Template Parameters" button
-2. Input fields appear for each detected parameter
-3. Enter comma-separated values (one per image)
-4. Example: For 3 images with `[dress_color]` parameter:
-   - Enter: `red, blue, green`
-
-**Paste Data:**
-- Paste CSV or JSON directly into text area
-- CSV format:
-  ```csv
-  dress_color,accessory
-  red,hat
-  blue,scarf
-  green,sunglasses
-  ```
-- JSON format:
-  ```json
-  [
-    {"dress_color": "red", "accessory": "hat"},
-    {"dress_color": "blue", "accessory": "scarf"}
-  ]
-  ```
-
-**Upload File:**
-- Upload `.csv` or `.json` file
-- Must have column headers matching your parameter names
-- See `example_batch.csv` and `example_batch.json` for format
-
-**3. Configure Shared Parameters**
-- Width, Height, Steps apply to all images (default: 1024×1024, 4 steps)
-- Seed (optional) - Same seed for all images or leave empty for random per image
-- File Prefix (default: "batch")
-- Output folder (optional)
-
-**4. Per-Image Parameter Control (Advanced)**
-- Check the checkbox beside any parameter to enable per-image control
-- Enter comma-separated values (e.g., `512, 768, 1024`) or use CSV columns (`width`, `height`, `steps`, `seed`, `file_prefix`, `subfolder`)
-- Example: Check Width and enter `512, 768, 1024` for different dimensions per image
-- See `example_batch_parameterized.csv` for complete example
-- Unchecked parameters use the shared default value for all images
-
-**5. Preview and Generate**
-- Click "Preview Batch" to see all generated prompts before running
-- Shows each prompt with parameters replaced
-- Preview now displays per-image parameters (dimensions, steps, seed, etc.)
-- Click "Generate Batch" to open confirmation dialog
-- **Confirmation dialog allows you to:**
-  - Review total image count
-  - Modify file prefix before generation (if not parameterized per-image)
-  - Change output folder before generation (if not parameterized per-image)
-  - Values auto-filled from batch form
-- All images process through the queue system
+4. Configure **LoRA Settings** (collapsible section):
+   - **MCNL LoRA**: Manga/comic line art style with keywords
+   - **Snofs LoRA**: Soft lighting and artistic effects with keywords
+   - **OFace LoRA**: Facial expression enhancement with keywords
+5. Click "Generate" button (next to prompt) or press `Ctrl+Enter` to add to queue
+6. Watch progress in the left sidebar queue panel
+7. Completed items show thumbnail images - click to jump to Image Browser
 
 ### View Images
 
@@ -204,10 +151,9 @@ Three ways to provide parameter values:
 - `sampler`: Fixed at "euler" with "simple" scheduler
 - `file_prefix`: Custom filename prefix (default: "comfyui")
 - `subfolder`: Target subfolder path (optional)
-- `steps`: Sampling steps (1-100, default 4)
-- `seed`: Random seed (optional, auto-generated if empty)
-- `file_prefix`: Custom filename prefix (default: "comfyui")
-- `subfolder`: Target subfolder path (optional)
+- `mcnl_lora`: Enable MCNL LoRA (manga/comic style)
+- `snofs_lora`: Enable Snofs LoRA (soft lighting effects)
+- `oface_lora`: Enable OFace LoRA (facial expressions)
 
 ## Project Structure
 
@@ -242,7 +188,6 @@ Three ways to provide parameter values:
 ### Core Endpoints
 - `GET /` - Main web interface with tabs
 - `POST /api/queue` - Add single generation job to queue (adds to front)
-- `POST /api/queue/batch` - Add multiple jobs from template and parameter data
 - `GET /api/queue` - Get queue status (returns queued, active, completed)
 - `DELETE /api/queue/<job_id>` - Remove queued or completed job (not active)
 - `POST /api/queue/clear` - Clear queued items only (preserves completed history)
@@ -257,7 +202,6 @@ Three ways to provide parameter values:
 - `GET /api/ai/models` - Get available AI models (Ollama and Gemini)
 - `POST /api/ai/optimize` - Optimize a prompt using AI
 - `POST /api/ai/suggest` - Apply user suggestion to edit prompt
-- `POST /api/ai/generate-parameters` - Generate batch parameters with AI
 
 ### ComfyUI Memory Management Endpoints
 - `POST /api/comfyui/unload` - Manually unload all models and clear memory

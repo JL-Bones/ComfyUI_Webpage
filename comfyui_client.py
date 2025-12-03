@@ -129,7 +129,10 @@ class ComfyUIClient:
         height: Optional[int] = None,
         steps: Optional[int] = None,
         cfg: Optional[float] = None,
-        seed: Optional[int] = None
+        seed: Optional[int] = None,
+        mcnl_lora: bool = False,
+        snofs_lora: bool = False,
+        oface_lora: bool = False
     ) -> Dict[str, Any]:
         """
         Modify workflow parameters
@@ -142,6 +145,9 @@ class ComfyUIClient:
             steps: Number of sampling steps
             cfg: CFG scale
             seed: Random seed (None for random)
+            mcnl_lora: Enable MCNL LoRA
+            snofs_lora: Enable Snofs LoRA
+            oface_lora: Enable OFace LoRA
             
         Returns:
             Modified workflow
@@ -170,6 +176,11 @@ class ComfyUIClient:
             # Generate random seed
             modified["75:3"]["inputs"]["seed"] = random.randint(0, 2**32 - 1)
         
+        # Update LoRA booleans
+        modified["75:115:115"]["inputs"]["value"] = mcnl_lora
+        modified["75:115:130"]["inputs"]["value"] = snofs_lora
+        modified["75:115:131"]["inputs"]["value"] = oface_lora
+        
         return modified
     
     def generate_image(
@@ -180,6 +191,9 @@ class ComfyUIClient:
         steps: int = 4,
         cfg: float = 1.0,
         seed: Optional[int] = None,
+        mcnl_lora: bool = False,
+        snofs_lora: bool = False,
+        oface_lora: bool = False,
         output_path: Optional[str] = None,
         wait: bool = True
     ) -> Optional[str]:
@@ -193,6 +207,9 @@ class ComfyUIClient:
             steps: Number of sampling steps
             cfg: CFG scale
             seed: Random seed (None for random)
+            mcnl_lora: Enable MCNL LoRA
+            snofs_lora: Enable Snofs LoRA
+            oface_lora: Enable OFace LoRA
             output_path: Path to save the image (None to not save)
             wait: Whether to wait for completion
             
@@ -208,7 +225,10 @@ class ComfyUIClient:
             height=height,
             steps=steps,
             cfg=cfg,
-            seed=seed
+            seed=seed,
+            mcnl_lora=mcnl_lora,
+            snofs_lora=snofs_lora,
+            oface_lora=oface_lora
         )
         
         # Queue the prompt
@@ -267,7 +287,13 @@ class ComfyUIClient:
         
         try:
             with urllib.request.urlopen(req) as response:
-                result = json.loads(response.read())
+                response_text = response.read().decode('utf-8').strip()
+                # Some ComfyUI versions return empty response
+                if response_text:
+                    try:
+                        result = json.loads(response_text)
+                    except json.JSONDecodeError:
+                        pass  # Empty or non-JSON response is OK
                 print(f"Models unloaded and memory freed")
                 return True
         except urllib.error.URLError as e:
@@ -294,7 +320,13 @@ class ComfyUIClient:
         
         try:
             with urllib.request.urlopen(req) as response:
-                result = json.loads(response.read())
+                response_text = response.read().decode('utf-8').strip()
+                # Some ComfyUI versions return empty response
+                if response_text:
+                    try:
+                        result = json.loads(response_text)
+                    except json.JSONDecodeError:
+                        pass  # Empty or non-JSON response is OK
                 print(f"Cache cleared")
                 return True
         except urllib.error.URLError as e:

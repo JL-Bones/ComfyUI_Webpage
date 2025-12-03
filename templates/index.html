@@ -36,6 +36,17 @@
                 </div>
             </div>
             
+            <!-- Auto-unload countdown timer -->
+            <div class="auto-unload-timer" id="autoUnloadTimer" style="display: none;">
+                <div class="timer-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                </div>
+                <span id="timerText">Auto-unload in 5:00</span>
+            </div>
+            
             <div class="queue-content">
                 <div class="queue-list" id="queueList">
                     <!-- Queued items will be displayed here -->
@@ -71,7 +82,6 @@
             <!-- Tab Navigation -->
             <div class="tab-navigation">
                 <button class="tab-btn active" data-tab="single">Single</button>
-                <button class="tab-btn" data-tab="batch">Batch</button>
                 <button class="tab-btn" data-tab="browser">Browser</button>
             </div>
 
@@ -81,12 +91,20 @@
                     <div class="generation-panel">
                         <div class="form-group">
                             <label for="prompt">Prompt</label>
-                            <textarea 
-                                id="prompt" 
-                                rows="4" 
-                                placeholder="Enter your prompt here..."
-                                class="form-control"
-                            ></textarea>
+                            <div class="prompt-container">
+                                <textarea 
+                                    id="prompt" 
+                                    rows="4" 
+                                    placeholder="Enter your prompt here... (Ctrl+Enter to generate)"
+                                    class="form-control"
+                                ></textarea>
+                                <button class="btn btn-primary btn-generate" id="generateBtn">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                                    </svg>
+                                    <span>Generate</span>
+                                </button>
+                            </div>
                             <button class="btn btn-sm" id="editPromptWithAI" style="margin-top: 0.5rem;">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <circle cx="12" cy="12" r="10"></circle>
@@ -177,309 +195,46 @@
                                 class="form-control"
                             >
                         </div>
-                    </div>
                         </div>
 
-                    <button class="btn btn-primary btn-large" id="generateBtn">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                        </svg>
-                        Generate
-                    </button>
-                    </div>
-                </section>
-
-                <!-- Batch Generation Tab -->
-                <section class="tab-content" id="batchTab">
-                    <div class="generation-panel">
-                        <div class="form-group">
-                            <label for="batchPromptTemplate">Prompt Template</label>
-                            <textarea 
-                                id="batchPromptTemplate" 
-                                rows="4" 
-                                placeholder="Enter prompt with [parameters] in brackets, e.g., A girl in a [dress_color] dress with [accessory]"
-                                class="form-control"
-                            ></textarea>
-                            <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem; align-items: flex-start;">
-                                <small style="color: var(--text-muted); flex: 1;">
-                                    Use [parameter_name] for values to be replaced. Example: "A [animal] in a [location]"
-                                </small>
-                                <button class="btn btn-sm" id="editBatchPromptWithAI">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <circle cx="12" cy="12" r="10"></circle>
-                                        <polyline points="12 6 12 12 16 14"></polyline>
-                                    </svg>
-                                    <span>✨ Edit with AI</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        <button class="collapsible-header" data-target="batchParameters">
-                            <span>Generation Parameters</span>
+                        <button class="collapsible-header" data-target="loraSettings">
+                            <span>LoRA Settings</span>
                             <svg class="collapse-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <polyline points="6 9 12 15 18 9"></polyline>
                             </svg>
                         </button>
-                        <div class="collapsible-content active" id="batchParameters">
-                        <div class="parameters-grid">
+                        <div class="collapsible-content active" id="loraSettings">
                             <div class="form-group">
-                                <label for="batchWidth">
-                                    <label class="checkbox-label" style="cursor: pointer; display: inline-flex; align-items: center; gap: 0.25rem; margin-bottom: 0.25rem;">
-                                        <input type="checkbox" id="batchWidthParam" class="batch-param-checkbox" style="margin-right: 0.25rem;">
-                                        <span>Width</span>
-                                    </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="mcnlLora" class="checkbox-input">
+                                    <span>MCNL LoRA</span>
                                 </label>
-                                <input 
-                                    type="number" 
-                                    id="batchWidth" 
-                                    value="1024" 
-                                    min="64" 
-                                    max="2048" 
-                                    step="64"
-                                    class="form-control"
-                                >
-                                <input 
-                                    type="text" 
-                                    id="batchWidthParamValue" 
-                                    placeholder="e.g., 512, 768, 1024 or [width_col]"
-                                    class="form-control batch-param-input"
-                                    style="display: none; margin-top: 0.5rem;"
-                                >
-                            </div>
-
-                            <div class="form-group">
-                                <label for="batchHeight">
-                                    <label class="checkbox-label" style="cursor: pointer; display: inline-flex; align-items: center; gap: 0.25rem; margin-bottom: 0.25rem;">
-                                        <input type="checkbox" id="batchHeightParam" class="batch-param-checkbox" style="margin-right: 0.25rem;">
-                                        <span>Height</span>
-                                    </label>
-                                </label>
-                                <input 
-                                    type="number" 
-                                    id="batchHeight" 
-                                    value="1024" 
-                                    min="64" 
-                                    max="2048" 
-                                    step="64"
-                                    class="form-control"
-                                >
-                                <input 
-                                    type="text" 
-                                    id="batchHeightParamValue" 
-                                    placeholder="e.g., 512, 768, 1024 or [height_col]"
-                                    class="form-control batch-param-input"
-                                    style="display: none; margin-top: 0.5rem;"
-                                >
-                            </div>
-
-                            <div class="form-group">
-                                <label for="batchSteps">
-                                    <label class="checkbox-label" style="cursor: pointer; display: inline-flex; align-items: center; gap: 0.25rem; margin-bottom: 0.25rem;">
-                                        <input type="checkbox" id="batchStepsParam" class="batch-param-checkbox" style="margin-right: 0.25rem;">
-                                        <span>Steps</span>
-                                    </label>
-                                </label>
-                                <input 
-                                    type="number" 
-                                    id="batchSteps" 
-                                    value="4" 
-                                    min="1" 
-                                    max="100"
-                                    class="form-control"
-                                >
-                                <input 
-                                    type="text" 
-                                    id="batchStepsParamValue" 
-                                    placeholder="e.g., 4, 8, 12 or [steps_col]"
-                                    class="form-control batch-param-input"
-                                    style="display: none; margin-top: 0.5rem;"
-                                >
-                            </div>
-
-                            <div class="form-group">
-                                <label for="batchSeed">
-                                    <label class="checkbox-label" style="cursor: pointer; display: inline-flex; align-items: center; gap: 0.25rem; margin-bottom: 0.25rem;">
-                                        <input type="checkbox" id="batchSeedParam" class="batch-param-checkbox" style="margin-right: 0.25rem;">
-                                        <span>Seed (optional)</span>
-                                    </label>
-                                </label>
-                                <div class="input-with-clear">
-                                    <input 
-                                        type="number" 
-                                        id="batchSeed" 
-                                        placeholder="Random"
-                                        class="form-control"
-                                    >
-                                    <button type="button" class="clear-btn" id="clearBatchSeedBtn" title="Clear seed">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                            <line x1="18" y1="6" x2="6" y2="18"></line>
-                                            <line x1="6" y1="6" x2="18" y2="18"></line>
-                                        </svg>
-                                    </button>
+                                <div class="keyword-list">
+                                    <small>Keywords: cum_on_face, nsfw, blowjob, cowgirlout, creamp1e, penis</small>
                                 </div>
-                                <input 
-                                    type="text" 
-                                    id="batchSeedParamValue" 
-                                    placeholder="e.g., 123, 456, 789 or [seed_col]"
-                                    class="form-control batch-param-input"
-                                    style="display: none; margin-top: 0.5rem;"
-                                >
                             </div>
-
-                            <div class="form-group">
-                                <label for="batchFilePrefix">
-                                    <label class="checkbox-label" style="cursor: pointer; display: inline-flex; align-items: center; gap: 0.25rem; margin-bottom: 0.25rem;">
-                                        <input type="checkbox" id="batchFilePrefixParam" class="batch-param-checkbox" style="margin-right: 0.25rem;">
-                                        <span>File Prefix</span>
-                                    </label>
-                                </label>
-                                <input 
-                                    type="text" 
-                                    id="batchFilePrefix" 
-                                    placeholder="batch"
-                                    value="batch"
-                                    class="form-control"
-                                >
-                                <input 
-                                    type="text" 
-                                    id="batchFilePrefixParamValue" 
-                                    placeholder="e.g., image1, image2 or [prefix_col]"
-                                    class="form-control batch-param-input"
-                                    style="display: none; margin-top: 0.5rem;"
-                                >
-                            </div>
-
-                            <div class="form-group">
-                                <label for="batchSubfolder">
-                                    <label class="checkbox-label" style="cursor: pointer; display: inline-flex; align-items: center; gap: 0.25rem; margin-bottom: 0.25rem;">
-                                        <input type="checkbox" id="batchSubfolderParam" class="batch-param-checkbox" style="margin-right: 0.25rem;">
-                                        <span>Output Folder (optional)</span>
-                                    </label>
-                                </label>
-                                <input 
-                                    type="text" 
-                                    id="batchSubfolder" 
-                                    placeholder="Leave empty for root"
-                                    class="form-control"
-                                >
-                                <input 
-                                    type="text" 
-                                    id="batchSubfolderParamValue" 
-                                    placeholder="e.g., folder1, folder2 or [folder_col]"
-                                    class="form-control batch-param-input"
-                                    style="display: none; margin-top: 0.5rem;"
-                                >
-                            </div>
-                        </div>
-                        </div>
-
-                        <!-- Data Input Methods -->
-                        <button class="collapsible-header" data-target="batchDataInput" style="margin-top: 1rem;">
-                            <span>Data Input</span>
-                            <svg class="collapse-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="6 9 12 15 18 9"></polyline>
-                            </svg>
-                        </button>
-                        <div class="collapsible-content active" id="batchDataInput">
-                        <div class="form-group" style="margin-top: 2rem;">
-                            <label>Parameter Data Input</label>
                             
-                            <!-- Tab buttons for input methods -->
-                            <div class="input-method-tabs" style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
-                                <button class="btn btn-sm input-method-btn active" data-method="manual">Manual Entry</button>
-                                <button class="btn btn-sm input-method-btn" data-method="textarea">Paste Data</button>
-                                <button class="btn btn-sm input-method-btn" data-method="file">Upload File</button>
-                            </div>
-
-                            <!-- Manual Entry -->
-                            <div class="input-method-content active" id="manualEntry">
-                                <div class="form-group">
-                                    <label for="batchCount">Number of Images</label>
-                                    <input 
-                                        type="number" 
-                                        id="batchCount" 
-                                        value="3" 
-                                        min="1" 
-                                        max="100"
-                                        class="form-control"
-                                    >
-                                </div>
-                                <div id="manualParametersContainer">
-                                    <!-- Will be dynamically populated based on template -->
-                                </div>
-                                <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
-                                    <button class="btn btn-secondary" id="parseTemplateBtn" style="flex: 1;">
-                                        Parse Template Parameters
-                                    </button>
-                                    <button class="btn btn-primary" id="aiGenerateParametersBtn" style="flex: 1;">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                            <circle cx="12" cy="12" r="10"></circle>
-                                            <polyline points="12 6 12 12 16 14"></polyline>
-                                        </svg>
-                                        <span>🤖 AI Generate Values</span>
-                                    </button>
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="snofsLora" class="checkbox-input">
+                                    <span>Snofs LoRA</span>
+                                </label>
+                                <div class="keyword-list">
+                                    <small>Keywords: anus, blowjob, deepthroat, braless, cowgirl position, cum, cunnilingus, dildo, doggystyle position, fingering, hand in panties, handjob, implied blowjob, ipcam, masturbating, massage, missionary position, naked, nude, penis, prone position, reverse cowgirl position, sex, sheer, snapchat, selfie, mirror selfie, spooning position, strap-on dildo, tentacles, licking testicles, undressing, vagina</small>
                                 </div>
                             </div>
-
-                            <!-- Paste Data -->
-                            <div class="input-method-content" id="textareaEntry" style="display: none;">
-                                <textarea 
-                                    id="batchDataText" 
-                                    rows="10" 
-                                    placeholder="Paste CSV or JSON data here&#10;&#10;CSV format:&#10;dress_color,accessory&#10;red,hat&#10;blue,scarf&#10;green,sunglasses&#10;&#10;JSON format:&#10;[&#10;  {&quot;dress_color&quot;: &quot;red&quot;, &quot;accessory&quot;: &quot;hat&quot;},&#10;  {&quot;dress_color&quot;: &quot;blue&quot;, &quot;accessory&quot;: &quot;scarf&quot;}&#10;]"
-                                    class="form-control"
-                                    style="font-family: monospace; font-size: 0.9rem;"
-                                ></textarea>
-                            </div>
-
-                            <!-- File Upload -->
-                            <div class="input-method-content" id="fileEntry" style="display: none;">
-                                <input 
-                                    type="file" 
-                                    id="batchDataFile" 
-                                    accept=".csv,.json,.txt"
-                                    class="form-control"
-                                >
-                                <small style="color: var(--text-muted); display: block; margin-top: 0.5rem;">
-                                    Accepts CSV or JSON files. CSV should have headers matching your parameter names.
-                                </small>
+                            
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="ofaceLora" class="checkbox-input">
+                                    <span>OFace LoRA</span>
+                                </label>
+                                <div class="keyword-list">
+                                    <small>Keywords: having an orgasm</small>
+                                </div>
                             </div>
                         </div>
-                        </div>
-
-                        <!-- Preview Section -->
-                        <div class="form-group" style="margin-top: 2rem;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                                <label>Batch Preview</label>
-                                <button class="btn btn-sm" id="downloadCSVBtn" style="display: none;">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                                        <polyline points="7 10 12 15 17 10"></polyline>
-                                        <line x1="12" y1="15" x2="12" y2="3"></line>
-                                    </svg>
-                                    <span>Download CSV</span>
-                                </button>
-                            </div>
-                            <div id="batchPreview" style="background: var(--bg-secondary); padding: 1rem; border-radius: 8px; max-height: 300px; overflow-y: auto;">
-                                <p style="color: var(--text-muted); text-align: center;">Configure parameters and click "Preview Batch" to see generated prompts</p>
-                            </div>
-                        </div>
-
-                        <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
-                            <button class="btn btn-secondary btn-large" id="previewBatchBtn">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                                    <circle cx="12" cy="12" r="3"></circle>
-                                </svg>
-                                Preview Batch
-                            </button>
-                            <button class="btn btn-primary btn-large" id="generateBatchBtn">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                                </svg>
-                                Generate Batch
-                            </button>
-                        </div>
+                    </div>
                     </div>
                 </section>
 
