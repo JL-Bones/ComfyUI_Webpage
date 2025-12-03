@@ -2,7 +2,7 @@
 Flask Web UI for ComfyUI Workflow
 """
 
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, Response, stream_with_context
 from comfyui_client import ComfyUIClient
 from ai_assistant import AIAssistant
 import os
@@ -315,7 +315,46 @@ def add_to_queue():
     return jsonify({'success': True, 'job_id': job['id']})
 
 
-
+@app.route('/api/queue/batch', methods=['POST'])
+def add_batch_to_queue():
+    global timer_stopped
+    """Add multiple generation jobs to the queue"""
+    data = request.json
+    jobs_data = data.get('jobs', [])
+    
+    if not jobs_data:
+        return jsonify({'success': False, 'error': 'No jobs provided'}), 400
+    
+    queued_ids = []
+    
+    with queue_lock:
+        for job_data in jobs_data:
+            job = {
+                'id': str(uuid.uuid4()),
+                'prompt': job_data.get('prompt', ''),
+                'width': int(job_data.get('width', 1024)),
+                'height': int(job_data.get('height', 1024)),
+                'steps': int(job_data.get('steps', 4)),
+                'seed': job_data.get('seed'),
+                'file_prefix': job_data.get('file_prefix', 'batch'),
+                'subfolder': job_data.get('subfolder', ''),
+                'mcnl_lora': job_data.get('mcnl_lora', False),
+                'snofs_lora': job_data.get('snofs_lora', False),
+                'oface_lora': job_data.get('oface_lora', False),
+                'status': 'queued',
+                'added_at': datetime.now().isoformat()
+            }
+            generation_queue.insert(0, job)  # Add to front of queue
+            queued_ids.append(job['id'])
+        
+        timer_stopped = False  # Allow timer to start when jobs complete
+    
+    save_queue_state()
+    return jsonify({
+        'success': True,
+        'queued_count': len(queued_ids),
+        'job_ids': queued_ids
+    })
 
 
 @app.route('/api/queue', methods=['GET'])
@@ -581,6 +620,32 @@ def get_ai_models():
         }), 500
 
 
+@app.route('/api/ai/stop', methods=['POST'])
+def stop_ai_generation():
+    """Stop AI generation and unload Ollama model"""
+    try:
+        data = request.json
+        model = data.get('model')
+        provider = data.get('provider', 'ollama')
+        
+        if provider == 'ollama' and model:
+            ai_assistant._unload_ollama_model(model)
+            return jsonify({
+                'success': True,
+                'message': f'Model {model} unloaded'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Only Ollama models can be stopped'
+            }), 400
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @app.route('/api/ai/optimize', methods=['POST'])
 def optimize_prompt():
     """Optimize a prompt using AI"""
@@ -588,12 +653,34 @@ def optimize_prompt():
     prompt = data.get('prompt', '').strip()
     model = data.get('model', 'llama2')
     provider = data.get('provider', 'ollama')
+    use_instructions = data.get('use_instructions', True)
+    stream = data.get('stream', False)
+    is_batch = data.get('is_batch', False)
     
     if not prompt:
         return jsonify({'success': False, 'error': 'Prompt required'}), 400
     
-    result = ai_assistant.optimize_prompt(prompt, model, provider)
-    return jsonify(result)
+    # Only Ollama supports streaming
+    if stream and provider == 'ollama':
+        from ai_instructions import OPTIMIZE_PROMPT_INSTRUCTION, OPTIMIZE_BATCH_PROMPT_INSTRUCTION
+        if use_instructions:
+            if is_batch:
+                instruction = OPTIMIZE_BATCH_PROMPT_INSTRUCTION.format(prompt=prompt)
+            else:
+                instruction = OPTIMIZE_PROMPT_INSTRUCTION.format(prompt=prompt)
+        else:
+            instruction = prompt
+        
+        def generate():
+            generator = ai_assistant._call_ollama(instruction, model, stream=True)
+            for chunk in generator:
+                yield f"data: {json.dumps({'text': chunk})}\n\n"
+            yield "data: {\"done\": true}\n\n"
+        
+        return Response(stream_with_context(generate()), mimetype='text/event-stream')
+    else:
+        result = ai_assistant.optimize_prompt(prompt, model, provider, use_instructions=use_instructions, is_batch=is_batch)
+        return jsonify(result)
 
 
 @app.route('/api/ai/suggest', methods=['POST'])
@@ -604,15 +691,188 @@ def suggest_prompt_edit():
     suggestion = data.get('suggestion', '').strip()
     model = data.get('model', 'llama2')
     provider = data.get('provider', 'ollama')
+    stream = data.get('stream', False)
     
     if not prompt or not suggestion:
         return jsonify({'success': False, 'error': 'Prompt and suggestion required'}), 400
+    
+    # Only Ollama supports streaming
+    if stream and provider == 'ollama':
+        from ai_instructions import EDIT_PROMPT_INSTRUCTION
+        instruction = EDIT_PROMPT_INSTRUCTION.format(prompt=prompt, suggestion=suggestion)
+        
+        def generate():
+            generator = ai_assistant._call_ollama(instruction, model, stream=True)
+            for chunk in generator:
+                yield f"data: {json.dumps({'text': chunk})}\n\n"
+            yield "data: {\"done\": true}\n\n"
+        
+        return Response(stream_with_context(generate()), mimetype='text/event-stream')
+    else:
+        result = ai_assistant.suggest_prompt_edit(prompt, suggestion, model, provider)
+        return jsonify(result)
     
     result = ai_assistant.suggest_prompt_edit(prompt, suggestion, model, provider)
     return jsonify(result)
 
 
+@app.route('/api/ai/optimize-instructions', methods=['GET'])
+def get_optimize_instructions():
+    """Get the optimize prompt instructions template"""
+    from ai_instructions import OPTIMIZE_PROMPT_INSTRUCTION
+    # Return the instructions without the {prompt} placeholder
+    instructions = OPTIMIZE_PROMPT_INSTRUCTION.replace('{prompt}', '[YOUR PROMPT WILL BE INSERTED HERE]')
+    return jsonify({'success': True, 'instructions': instructions})
 
+
+@app.route('/api/ai/generate-csv', methods=['POST'])
+def generate_csv_with_ai():
+    """Generate CSV parameter data using AI"""
+    data = request.json
+    base_prompt = data.get('base_prompt')
+    parameters = data.get('parameters', [])
+    count = int(data.get('count', 5))
+    model = data.get('model', 'llama2')
+    provider = data.get('provider', 'ollama')
+    custom_context = (data.get('custom_context') or '').strip()
+    use_instructions = data.get('use_instructions', True)
+    stream = data.get('stream', False)
+    
+    if not parameters:
+        return jsonify({'success': False, 'error': 'Parameters required'}), 400
+    
+    if count < 1 or count > 50:
+        return jsonify({'success': False, 'error': 'Count must be between 1 and 50'}), 400
+    
+    variable_parameters = data.get('variable_parameters', [])
+    
+    # Only Ollama supports streaming
+    if stream and provider == 'ollama':
+        from ai_instructions import GENERATE_PARAMETERS_INSTRUCTION
+        
+        # Build context
+        context_parts = []
+        if base_prompt:
+            context_parts.append(f"Base Prompt Template: {base_prompt}")
+        
+        if variable_parameters:
+            param_hints = []
+            if 'width' in variable_parameters or 'height' in variable_parameters:
+                param_hints.append("- width/height: Use values like 512, 768, 1024, 1536, 2048 (multiples of 64)")
+            if 'steps' in variable_parameters:
+                param_hints.append("- steps: Use values between 4-20 (4 for fast, 8-12 balanced, 16-20 detailed)")
+            if 'seed' in variable_parameters:
+                param_hints.append("- seed: Use random integers or leave empty for random generation")
+            if 'file_prefix' in variable_parameters:
+                param_hints.append("- file_prefix: Use descriptive names matching content")
+            if 'subfolder' in variable_parameters:
+                param_hints.append("- subfolder: Use logical folder names for organization")
+            if any(lora in variable_parameters for lora in ['mcnl_lora', 'snofs_lora', 'oface_lora']):
+                param_hints.append("- LoRA parameters: Use true/false, yes/no, or 1/0")
+            
+            if param_hints:
+                context_parts.append("\\nVariable Parameter Guidelines:\\n" + "\\n".join(param_hints))
+        
+        if custom_context:
+            context_parts.append(f"\\nCustom Requirements: {custom_context}")
+        
+        context_info = "\n".join(context_parts) if context_parts else "Generate creative and diverse parameter values."
+        
+        if use_instructions:
+            headers = ",".join(parameters)
+            instruction = GENERATE_PARAMETERS_INSTRUCTION.format(
+                context_info=context_info,
+                count=count,
+                headers=headers
+            )
+        else:
+            headers = ",".join(parameters)
+            instruction = f"{context_info}\n\nGenerate {count} diverse CSV rows with these parameters: {headers}\n\nFirst row must be the headers, then {count} data rows."
+        
+        def generate():
+            generator = ai_assistant._call_ollama(instruction, model, stream=True)
+            for chunk in generator:
+                yield f"data: {json.dumps({'text': chunk})}\n\n"
+            yield 'data: {"done": true}\n\n'
+        
+        return Response(stream_with_context(generate()), mimetype='text/event-stream')
+    else:
+        result = ai_assistant.generate_csv_parameters(
+            base_prompt=base_prompt,
+            parameters=parameters,
+            count=count,
+            model=model,
+            provider=provider,
+            custom_context=custom_context,
+            use_instructions=use_instructions,
+            variable_parameters=variable_parameters
+        )
+        return jsonify(result)
+
+
+@app.route('/api/ai/generate-parameter-values', methods=['POST'])
+def generate_parameter_values():
+    """Generate values for a single parameter using AI"""
+    try:
+        data = request.json
+        parameter = data.get('parameter')
+        count = data.get('count', 5)
+        model = data.get('model')
+        provider = data.get('provider', 'ollama')
+        instructions = data.get('instructions', '')
+        stream = data.get('stream', False)
+        
+        if not parameter:
+            return jsonify({'success': False, 'error': 'Parameter name is required'}), 400
+        
+        if not model:
+            return jsonify({'success': False, 'error': 'Model is required'}), 400
+        
+        # Only Ollama supports streaming
+        if stream and provider == 'ollama':
+            # Build context for this parameter
+            context_parts = [f"Generate {count} diverse and creative values for the parameter '{parameter}'."]
+            
+            # Add parameter-specific hints
+            if parameter == 'width' or parameter == 'height':
+                context_parts.append("Use image dimensions like 512, 768, 1024, 1536, 2048 (multiples of 64). Consider various aspect ratios.")
+            elif parameter == 'steps':
+                context_parts.append("Use values between 4-20 (4 for fast generation, 8-12 balanced, 16-20 detailed).")
+            elif parameter == 'seed':
+                context_parts.append("Use random integers or -1 for random generation.")
+            elif parameter == 'file_prefix':
+                context_parts.append("Use descriptive file name prefixes that match the content (e.g., 'portrait', 'landscape', 'character', 'scene').")
+            elif parameter == 'subfolder':
+                context_parts.append("Use logical folder names for organization (e.g., 'portraits', 'landscapes', 'variations', 'tests').")
+            elif 'lora' in parameter.lower():
+                context_parts.append("Use boolean values: true, false, yes, no, 1, or 0.")
+            
+            if instructions:
+                context_parts.append(f"\nAdditional requirements: {instructions}")
+            
+            context_parts.append(f"\nOutput exactly {count} values, one per line. No numbering, no explanations, just the values.")
+            
+            instruction = "\n".join(context_parts)
+            
+            def generate():
+                generator = ai_assistant._call_ollama(instruction, model, stream=True)
+                for chunk in generator:
+                    yield f"data: {json.dumps({'text': chunk})}\n\n"
+                yield 'data: {"done": true}\n\n'
+            
+            return Response(stream_with_context(generate()), mimetype='text/event-stream')
+        else:
+            result = ai_assistant.generate_parameter_values(
+                parameter=parameter,
+                count=count,
+                model=model,
+                provider=provider,
+                instructions=instructions
+            )
+            
+            return jsonify(result)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # ComfyUI Memory Management Endpoints

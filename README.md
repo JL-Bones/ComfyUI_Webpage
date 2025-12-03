@@ -4,9 +4,10 @@ Flask-based web UI for ComfyUI with AI-assisted prompting, queue management, and
 
 ## Features
 
-- 🎨 **Dark-themed interface** with tab navigation (Single/Browser)
+- 🎨 **Dark-themed interface** with tab navigation (Single/Batch/Browser)
 - 📱 **Mobile-optimized** - Collapsible menus, touch-friendly controls, responsive design
-- 🤖 **AI assistance** - Prompt optimization with Ollama or Gemini
+- 🤖 **AI assistance** - Prompt optimization and CSV generation with Ollama or Gemini (with streaming)
+- 📊 **Batch generation** - CSV-based parameter templates with AI generation support
 - 🎛️ **LoRA controls** - Three toggle switches with keyword hints (MCNL, Snofs, OFace)
 - ⌨️ **Keyboard shortcuts** - Ctrl+Enter to generate, fullscreen navigation
 - 📋 **Persistent queue** - Shared across users, survives restarts, shows count badge
@@ -74,8 +75,9 @@ ComfyUI must be running on `http://127.0.0.1:8188`
 
 ### Tab Navigation
 
-The interface has two tabs:
+The interface has three tabs:
 - **Single Generation**: Generate individual images with full parameter control
+- **Batch Generation**: Create multiple variations using CSV templates with parameter placeholders
 - **Image Browser**: Browse, organize, and manage your generated images
 
 ### Generate Images (Single Mode)
@@ -95,6 +97,30 @@ The interface has two tabs:
 5. Click "Generate" button (next to prompt) or press `Ctrl+Enter` to add to queue
 6. Watch progress in the left sidebar queue panel
 7. Completed items show thumbnail images - click to jump to Image Browser
+
+### Generate Batches (Batch Mode)
+
+1. Navigate to the **Batch Generation** tab
+2. Enter a **base prompt with parameter placeholders**:
+   ```
+   A [animal] wearing a [clothing] in a [location]
+   ```
+3. Choose input method for **Parameter Values**:
+   - **Manual Entry**: Select parameters from dropdown, generate with AI, or type values
+   - **Paste Data**: Paste CSV data directly (header row + data rows)
+   - **Upload File**: Load a CSV file with parameter values
+4. Click **Preview Batch** to see all generated prompts
+5. Adjust batch parameters (width, height, steps, seed, prefix, folder, LoRAs)
+6. Click **Queue [N] Images** to add all variations to the queue
+7. Watch sequential generation in the queue sidebar
+
+**AI Features for Batch Mode:**
+- **✨ Edit with AI** - Optimize template while preserving `[parameters]`
+- **✨ Generate CSV with AI** - Create parameter combinations automatically
+- **✨ Edit Parameter Values** - AI-assisted editing of single or multiple parameters
+- Parameters can be enabled/disabled individually for batch override
+
+See [AI_FEATURES.md](AI_FEATURES.md) for detailed AI usage guide.
 
 ### View Images
 
@@ -128,6 +154,7 @@ The interface has two tabs:
 
 - View all jobs in left sidebar (queued → active → completed)
 - **Mobile:** Tap hamburger menu (☰) in header to open/close queue sidebar
+- **Batch jobs** show as individual items with batch index in the queue
 - **Queued items** appear at top (newest first) with status badge
 - **Active item** shows in middle while generating (cannot be removed)
 - **Completed items** display at bottom with thumbnail images (last 50 preserved)
@@ -140,6 +167,7 @@ The interface has two tabs:
 - **Persistent queue** - Survives server restarts via `queue_state.json`
 - **Shared across all users** - All browsers see same queue state
 - Keeps last 50 completed jobs with images
+- Batch generations appear as sequential individual jobs in queue
 ## Generation Parameters
 
 - `positive_prompt`: Main prompt text (sent to Qwen CLIP encoder)
@@ -158,18 +186,18 @@ The interface has two tabs:
 ## Project Structure
 
 ```
-├── app.py                 # Flask backend with queue processor & AI endpoints
+├── app.py                 # Flask backend with queue processor & AI endpoints (SSE streaming)
 ├── comfyui_client.py      # Python stdlib ComfyUI API wrapper (urllib, json)
-├── ai_assistant.py        # AI integration (Ollama + Gemini, 60s keep-alive)
-├── ai_instructions.py     # Preset instructions for AI operations
+├── ai_assistant.py        # AI integration (Ollama + Gemini, immediate unload after use)
+├── ai_instructions.py     # Preset instructions for AI operations (batch & single)
 ├── Imaginer.json          # ComfyUI workflow definition with node IDs
 ├── .env.example           # Example environment file for API keys
 ├── AI_FEATURES.md         # Complete AI features documentation
 ├── templates/
-│   └── index.html         # Mobile-optimized SPA with collapsible sections
+│   └── index.html         # Three-tab SPA (Single/Batch/Browser) with mobile optimization
 ├── static/
 │   ├── style.css          # Dark theme, mobile responsive (≤768px, ≤480px)
-│   ├── script.js          # Vanilla JS (mobile handlers, AI, modals)
+│   ├── script.js          # Vanilla JS (batch, streaming, mobile handlers, AI, modals)
 ├── outputs/               # Generated images with subfolders (gitignored)
 │   ├── subfolder1/       # User-created folders
 │   │   └── *.png        # Images in subfolder
@@ -200,8 +228,11 @@ The interface has two tabs:
 
 ### AI Assistant Endpoints
 - `GET /api/ai/models` - Get available AI models (Ollama and Gemini)
-- `POST /api/ai/optimize` - Optimize a prompt using AI
-- `POST /api/ai/suggest` - Apply user suggestion to edit prompt
+- `POST /api/ai/optimize` - Optimize a prompt (supports `is_batch` flag, streams with Ollama)
+- `POST /api/ai/suggest` - Apply user suggestion to edit prompt (streaming)
+- `POST /api/ai/generate-csv` - Generate CSV data for batch parameters (streaming)
+- `POST /api/ai/generate-parameter-values` - Generate single/multi parameter values (streaming)
+- `POST /api/ai/stop` - Stop AI generation and unload model immediately
 
 ### ComfyUI Memory Management Endpoints
 - `POST /api/comfyui/unload` - Manually unload all models and clear memory
@@ -256,9 +287,10 @@ app.run(host='0.0.0.0', port=4879, debug=False, threaded=True)
 - Uses only Python stdlib for ComfyUI client (no pip dependencies)
 - Flask is the only external dependency
 - **Model Management:**
-  - ComfyUI models auto-unload 60s after queue empties
-  - Ollama models stay loaded 60s after last AI call
+  - ComfyUI models auto-unload after 5 minutes idle (300s countdown timer)
+  - Ollama models unload immediately after generation (`keep_alive: 0`)
   - Both can be manually unloaded via UI buttons
+  - Stop button cancels AI streaming and unloads model instantly
 
 ## Privacy
 

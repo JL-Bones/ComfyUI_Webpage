@@ -1,13 +1,15 @@
 # ComfyUI Web Interface - AI Agent Instructions
 
 ## Project Overview
-Flask-based web UI for ComfyUI image generation with AI-assisted prompting, queue management, and file organization. **Requires ComfyUI server at `http://127.0.0.1:8188`**. Only dependency: Flask. Uses Qwen Image model workflow (4-step lightning generation).
+Flask-based web UI for ComfyUI image generation with AI-assisted prompting, batch generation, queue management, and file organization. **Requires ComfyUI server at `http://127.0.0.1:8188`**. Only dependency: Flask. Uses Qwen Image model workflow (4-step lightning generation).
 
 **Recent Updates:**
-- LoRA control system added (MCNL, Snofs, OFace with keyword hints)
-- Generate button moved to prompt area with Ctrl+Enter shortcut
-- Queue sidebar collapse now adjusts main content width (no empty space)
-- Mobile-first responsive design with touch-optimized controls
+- Batch mode with [parameter] templates and CSV import/generation
+- AI streaming for real-time response display (Ollama only)
+- Multi-parameter AI editing with single/multiple selection
+- Stop buttons for canceling AI generation mid-stream
+- CSV buttons and AI buttons now use white text for consistency
+- Mobile-optimized CSV button layout (full-width stacking)
 
 ## Architecture (Three-Layer System)
 
@@ -21,13 +23,15 @@ Python stdlib wrapper (urllib, json). Modifies workflow JSON with hardcoded node
 Queue processor (LIFO display, FIFO execution), metadata storage, AI integration. Serves on `0.0.0.0:4879`. Background daemon thread processes queue sequentially. 5-minute auto-unload with countdown timer.
 
 **3. Frontend** (`templates/index.html`, `static/`)  
-Vanilla JS SPA with collapsible mobile UI, custom modals (no browser dialogs), toast notifications, 1s polling, countdown timer. Generate button positioned next to prompt with Ctrl+Enter keyboard shortcut.
+Vanilla JS SPA with three tabs (Single, Batch, Browser), collapsible mobile UI, custom modals (no browser dialogs), toast notifications, 1s polling, countdown timer, SSE streaming for AI responses.
 
 **Data Flow:**  
 ```
-User → Queue (front insert) → Thread (end pop, oldest first) → ComfyUI → Image + Metadata
-         ↓ 1s poll                                                           ↓ auto-refresh
-    3-section UI (queued/active/completed)                          Folder browser + thumbnails
+Single Mode: User → Queue (front insert) → Thread (end pop, oldest first) → ComfyUI → Image + Metadata
+Batch Mode:  User → [parameter] template + CSV → Multiple jobs → Queue → Sequential processing
+AI Features: User → SSE stream (Ollama) or fetch (Gemini) → Real-time text display → Apply result
+                    ↓ 1s poll                                                           ↓ auto-refresh
+               3-section UI (queued/active/completed)                          Folder browser + thumbnails
 ```
 
 **LoRA System:**  
@@ -71,8 +75,9 @@ Queue sidebar collapses from 320px to 40px (not translateX). Main content expand
 - Hamburger menu toggles sidebar (`toggleMobileMenu()` with `stopPropagation()`)
 - Collapsible sections: `.collapsible-header` + `.collapsible-content` with `.active` class
 - Touch targets: Min 44px height, increased padding on mobile
-- Tabs: "Single", "Browser" (shortened for mobile)
+- Tabs: "Single", "Batch", "Browser"
 - Prompt container stacks vertically, generate button becomes full-width horizontal
+- CSV buttons: `.csv-buttons-wrapper` stacks full-width on mobile with white text
 
 ### File Naming (Auto-Increment)
 ```python
@@ -85,7 +90,56 @@ def get_next_filename(prefix: str, subfolder: str = "") -> tuple:
 Flat JSON array in `outputs/metadata.json`: `id, filename, path, subfolder, timestamp, prompt, width, height, steps, seed, file_prefix, mcnl_lora, snofs_lora, oface_lora`. No negative prompt. CFG fixed at 1.0 for Qwen Image model compatibility.
 
 ### AI Integration (`ai_assistant.py`)
-Dual provider: Ollama (local, port 11434) and Gemini (API key from `.env`). Models unload immediately after use (`keep_alive: 0` for Ollama). Only prompt optimization/editing supported (batch generation removed).
+Dual provider: Ollama (local, port 11434) and Gemini (API key from `.env`). Models unload immediately after use (`keep_alive: 0` for Ollama). Features:
+- **Prompt optimization** - Single and batch mode with `is_batch` parameter (preserves `[parameters]`)
+- **Custom suggestions** - Apply user-directed edits to prompts
+- **Parameter generation** - Single or multi-parameter CSV generation for batch mode
+- **Streaming** - Ollama uses SSE (Server-Sent Events) for real-time text display
+- **Stop functionality** - Cancel mid-generation and immediately unload model
+
+### AI Streaming (SSE Pattern)
+Ollama responses stream in real-time via Server-Sent Events:
+```javascript
+// Frontend: ReadableStream with line-by-line SSE parsing
+async function streamAIResponse(endpoint, payload, targetElementId) {
+    const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, stream: true })
+    });
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');  // Fixed: was '\\n'
+        buffer = lines.pop();
+        for (const line of lines) {
+            if (line.startsWith('data: ')) {
+                const data = JSON.parse(line.slice(6));
+                targetElement.value += data.text;
+            }
+        }
+    }
+}
+
+// Backend: Generator function with Response(stream_with_context)
+@app.route('/api/ai/optimize', methods=['POST'])
+def optimize_prompt():
+    if stream and provider == 'ollama':
+        def generate():
+            for chunk in ai_assistant.optimize_prompt_stream(...):
+                yield f"data: {json.dumps({'text': chunk})}\n\n"
+        return Response(stream_with_context(generate()), mimetype='text/event-stream')
+```
+
+**Stop Functionality:**
+- Stop buttons visible only during Ollama streaming
+- `stopAIGeneration()` cancels ReadableStream, calls `/api/ai/stop`, hides buttons, re-enables UI
+- Backend `_unload_ollama_model()` immediately unloads via `keep_alive: 0`
 
 ### Custom Modals (No Browser Dialogs)
 ```javascript
@@ -116,6 +170,34 @@ document.addEventListener('click', function(e) {
 }, true);  // Capture phase = true
 ```
 
+### Batch Mode Pattern
+Template with `[parameter]` placeholders → CSV data → Multiple queue jobs:
+```javascript
+// Template: "A [animal] wearing a [clothing]"
+// CSV: animal,clothing\ncat,hat\ndog,scarf
+// Result: Two prompts queued: "A cat wearing a hat", "A dog wearing a scarf"
+
+function parseBatchCSV(basePrompt, csvData) {
+    const lines = csvData.trim().split('\n').filter(l => !l.startsWith('#'));
+    const headers = lines[0].split(',').map(h => h.trim());
+    const rows = lines.slice(1).map(line => line.split(',').map(v => v.trim()));
+    
+    return rows.map(values => {
+        let prompt = basePrompt;
+        headers.forEach((param, i) => {
+            prompt = prompt.replace(new RegExp(`\\[${param}\\]`, 'g'), values[i]);
+        });
+        return prompt;
+    });
+}
+```
+
+**Batch AI Features:**
+- `is_batch: true` flag uses `OPTIMIZE_BATCH_PROMPT_INSTRUCTION` (preserves `[parameters]`)
+- Multi-parameter generation: Single param → line-separated values, Multiple → CSV format
+- `generateParameterValues()` handles 1-N selected parameters from dropdown
+- `applyParameterValues()` merges generated data into CSV textarea
+
 ### Image Path Handling
 Always use `relative_path` (includes subfolder) over `filename`:
 ```javascript
@@ -141,7 +223,11 @@ python -m py_compile <file>      # Check syntax
 - `GET /api/browse?path=<subfolder>` - Browse folder with metadata (relative_path includes subfolder)
 - `POST /api/folder` - Create subfolder
 - `POST /api/move` / `POST /api/delete` - Batch operations with conflict resolution
-- `POST /api/ai/optimize` / `POST /api/ai/suggest` - AI prompt editing (single mode only)
+- `POST /api/ai/optimize` - AI prompt optimization (accepts `is_batch` flag, streams with Ollama)
+- `POST /api/ai/suggest` - Apply custom suggestions to prompts (streaming)
+- `POST /api/ai/generate-csv` - Generate CSV data for batch parameters (streaming)
+- `POST /api/ai/generate-parameter-values` - Generate single/multi parameter values (streaming)
+- `POST /api/ai/stop` - Stop AI generation and unload model immediately
 - `GET /api/ai/models` - Get available models (Ollama + Gemini)
 - `POST /api/comfyui/unload` - Free RAM/VRAM/cache (manual, resets auto-unload timer)
 - `GET /api/comfyui/status` - Get timer status (timer_active, unload_in_seconds)
@@ -249,7 +335,7 @@ if response_text:
 - `@media (max-width: 480px)` - Extra small devices
 - Queue sidebar: `position: fixed`, `transform: translateX(-100%)`
 - Collapsible sections: `max-height` transitions with `.active` class
-- Tabs: "Single", "Browser" (no batch tab)
+- Tabs: "Single", "Batch", "Browser"
 
 ## State Variables (script.js)
 
@@ -263,7 +349,7 @@ let zoomLevel = 1;                // Fullscreen zoom (1-5x)
 let autoplayTimer = null;         // Autoplay setTimeout ID
 let isAutoplayActive = false;     // Autoplay on/off state
 let lastSeenCompletedIds = new Set(); // Track seen completions for folder refresh
-let aiCurrentPromptSource = 'single';  // Always 'single' (batch removed)
+let aiCurrentPromptSource = 'single';  // 'single' or 'batch' for AI context
 ```
 
 ## Integration Notes

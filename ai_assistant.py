@@ -65,7 +65,7 @@ class AIAssistant:
             'gemini': self.get_available_gemini_models()
         }
     
-    def optimize_prompt(self, prompt: str, model: str, provider: str = 'ollama') -> Dict[str, Any]:
+    def optimize_prompt(self, prompt: str, model: str, provider: str = 'ollama', use_instructions: bool = True, is_batch: bool = False) -> Dict[str, Any]:
         """
         Optimize an image generation prompt
         
@@ -73,11 +73,22 @@ class AIAssistant:
             prompt: Original prompt text
             model: Model name (e.g., 'llama2', 'gemini-2.5-flash')
             provider: 'ollama' or 'gemini'
+            use_instructions: If True, use the optimize instructions. If False, just send the prompt.
+            is_batch: If True, use batch prompt optimization (preserves [parameters])
         
         Returns:
             Dict with 'success', 'optimized_prompt', and optional 'error'
         """
-        instruction = OPTIMIZE_PROMPT_INSTRUCTION.format(prompt=prompt)
+        from ai_instructions import OPTIMIZE_BATCH_PROMPT_INSTRUCTION
+        
+        if use_instructions:
+            if is_batch:
+                instruction = OPTIMIZE_BATCH_PROMPT_INSTRUCTION.format(prompt=prompt)
+            else:
+                instruction = OPTIMIZE_PROMPT_INSTRUCTION.format(prompt=prompt)
+        else:
+            # Just send the prompt directly without instructions
+            instruction = prompt
         
         try:
             if provider == 'ollama':
@@ -116,6 +127,170 @@ class AIAssistant:
                 return {'success': False, 'error': f'Unknown provider: {provider}'}
             
             return result
+        
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    def generate_csv_parameters(
+        self,
+        base_prompt: str,
+        parameters: list,
+        count: int,
+        model: str,
+        provider: str = 'ollama',
+        custom_context: str = None,
+        use_instructions: bool = True,
+        variable_parameters: list = None
+    ) -> Dict[str, Any]:
+        """
+        Generate CSV parameter data for batch generation
+        
+        Args:
+            base_prompt: The base prompt template (optional)
+            parameters: List of parameter names
+            count: Number of variations to generate
+            model: Model name
+            provider: 'ollama' or 'gemini'
+            custom_context: Custom suggestions/context
+            use_instructions: Whether to include default instructions
+            variable_parameters: List of parameter names that are generation params (width, height, etc.)
+        
+        Returns:
+            Dict with 'success', 'csv_data', and optional 'error'
+        """
+        from ai_instructions import GENERATE_PARAMETERS_INSTRUCTION
+        
+        # Build context info based on what's provided
+        context_parts = []
+        
+        if base_prompt:
+            context_parts.append(f"Base Prompt Template: {base_prompt}")
+        
+        # Add hints for variable parameters
+        if variable_parameters:
+            param_hints = []
+            if 'width' in variable_parameters or 'height' in variable_parameters:
+                param_hints.append("- width/height: Use values like 512, 768, 1024, 1536, 2048 (multiples of 64)")
+            if 'steps' in variable_parameters:
+                param_hints.append("- steps: Use values between 4-20 (4 for fast, 8-12 balanced, 16-20 detailed)")
+            if 'seed' in variable_parameters:
+                param_hints.append("- seed: Use random integers or leave empty for random generation")
+            if 'file_prefix' in variable_parameters:
+                param_hints.append("- file_prefix: Use descriptive names matching content (e.g., 'portrait', 'landscape', 'character')")
+            if 'subfolder' in variable_parameters:
+                param_hints.append("- subfolder: Use logical folder names for organization (e.g., 'portraits', 'landscapes', 'variations')")
+            if 'mcnl_lora' in variable_parameters or 'snofs_lora' in variable_parameters or 'oface_lora' in variable_parameters:
+                param_hints.append("- LoRA parameters: Use true/false, yes/no, or 1/0 to enable/disable")
+            
+            if param_hints:
+                context_parts.append("\nVariable Parameter Guidelines:\n" + "\n".join(param_hints))
+        
+        if custom_context:
+            context_parts.append(f"\nCustom Requirements: {custom_context}")
+        
+        context_info = "\n".join(context_parts) if context_parts else "Generate creative and diverse parameter values."
+        
+        # Build the instruction
+        if use_instructions:
+            headers = ",".join(parameters)
+            instruction = GENERATE_PARAMETERS_INSTRUCTION.format(
+                context_info=context_info,
+                count=count,
+                headers=headers
+            )
+        else:
+            # Without instructions, just send a simple request
+            headers = ",".join(parameters)
+            instruction = f"{context_info}\n\nGenerate {count} diverse CSV rows with these parameters: {headers}\n\nFirst row must be the headers, then {count} data rows."
+        
+        try:
+            if provider == 'ollama':
+                result = self._call_ollama(instruction, model)
+            elif provider == 'gemini':
+                result = self._call_gemini(instruction, model)
+            else:
+                return {'success': False, 'error': f'Unknown provider: {provider}'}
+            
+            if result.get('success'):
+                # The result should contain 'optimized_prompt' which is our CSV data
+                csv_data = result.get('optimized_prompt', '')
+                return {'success': True, 'csv_data': csv_data}
+            else:
+                return result
+        
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    def generate_parameter_values(
+        self,
+        parameter: str,
+        count: int,
+        model: str,
+        provider: str = 'ollama',
+        instructions: str = None
+    ) -> Dict[str, Any]:
+        """
+        Generate values for a single parameter
+        
+        Args:
+            parameter: Name of the parameter to generate values for
+            count: Number of values to generate
+            model: Model name
+            provider: 'ollama' or 'gemini'
+            instructions: Custom instructions for value generation
+        
+        Returns:
+            Dict with 'success', 'values' (list), and optional 'error'
+        """
+        # Build context for this parameter
+        context_parts = [f"Generate {count} diverse and creative values for the parameter '{parameter}'."]
+        
+        # Add parameter-specific hints
+        if parameter == 'width' or parameter == 'height':
+            context_parts.append("Use image dimensions like 512, 768, 1024, 1536, 2048 (multiples of 64). Consider various aspect ratios.")
+        elif parameter == 'steps':
+            context_parts.append("Use values between 4-20 (4 for fast generation, 8-12 balanced, 16-20 detailed).")
+        elif parameter == 'seed':
+            context_parts.append("Use random integers or -1 for random generation.")
+        elif parameter == 'file_prefix':
+            context_parts.append("Use descriptive file name prefixes that match the content (e.g., 'portrait', 'landscape', 'character', 'scene').")
+        elif parameter == 'subfolder':
+            context_parts.append("Use logical folder names for organization (e.g., 'portraits', 'landscapes', 'variations', 'tests').")
+        elif 'lora' in parameter.lower():
+            context_parts.append("Use boolean values: true, false, yes, no, 1, or 0.")
+        
+        # Add custom instructions if provided
+        if instructions:
+            context_parts.append(f"\nAdditional requirements: {instructions}")
+        
+        context_parts.append(f"\nOutput exactly {count} values, one per line. No numbering, no explanations, just the values.")
+        
+        instruction = "\n".join(context_parts)
+        
+        try:
+            if provider == 'ollama':
+                result = self._call_ollama(instruction, model)
+            elif provider == 'gemini':
+                result = self._call_gemini(instruction, model)
+            else:
+                return {'success': False, 'error': f'Unknown provider: {provider}'}
+            
+            if result.get('success'):
+                # Parse the result into individual values
+                output_text = result.get('optimized_prompt', '')
+                values = [line.strip() for line in output_text.split('\n') if line.strip()]
+                
+                # Remove any numbering (1., 2., etc.) if present
+                cleaned_values = []
+                for value in values:
+                    # Remove leading numbers and dots/parentheses
+                    cleaned = value.lstrip('0123456789.)-( ').strip()
+                    if cleaned:
+                        cleaned_values.append(cleaned)
+                
+                return {'success': True, 'values': cleaned_values}
+            else:
+                return result
         
         except Exception as e:
             return {'success': False, 'error': str(e)}
@@ -225,12 +400,12 @@ class AIAssistant:
         except Exception as e:
             return {'success': False, 'error': str(e)}
     
-    def _call_ollama(self, prompt: str, model: str) -> Dict[str, Any]:
+    def _call_ollama(self, prompt: str, model: str, stream: bool = False) -> Dict[str, Any]:
         """Call Ollama API"""
         data = {
             'model': model,
             'prompt': prompt,
-            'stream': False,
+            'stream': stream,
             'options': {
                 'temperature': 0.7,
                 'top_p': 0.9
@@ -245,22 +420,52 @@ class AIAssistant:
         )
         
         try:
-            with urllib.request.urlopen(req, timeout=120) as response:
-                result = json.loads(response.read().decode())
-                response_text = result.get('response', '').strip()
-                
-                # Unload model immediately
-                self._unload_ollama_model(model)
-                
-                return {
-                    'success': True,
-                    'optimized_prompt': response_text
-                }
+            if stream:
+                # Return generator for streaming
+                return self._stream_ollama(req, model)
+            else:
+                with urllib.request.urlopen(req, timeout=120) as response:
+                    result = json.loads(response.read().decode())
+                    response_text = result.get('response', '').strip()
+                    
+                    # Unload model immediately
+                    self._unload_ollama_model(model)
+                    
+                    return {
+                        'success': True,
+                        'optimized_prompt': response_text
+                    }
         except urllib.error.HTTPError as e:
             error_msg = e.read().decode() if e.fp else str(e)
             return {'success': False, 'error': f'Ollama HTTP error: {error_msg}'}
         except Exception as e:
             return {'success': False, 'error': f'Ollama error: {str(e)}'}
+    
+    def _stream_ollama(self, req, model: str):
+        """Stream responses from Ollama API"""
+        try:
+            with urllib.request.urlopen(req, timeout=120) as response:
+                full_response = ""
+                for line in response:
+                    line_text = line.decode('utf-8').strip()
+                    if line_text:
+                        try:
+                            chunk = json.loads(line_text)
+                            if 'response' in chunk:
+                                text = chunk['response']
+                                full_response += text
+                                yield text
+                            if chunk.get('done', False):
+                                break
+                        except json.JSONDecodeError:
+                            continue
+                
+                # Unload model after streaming completes
+                self._unload_ollama_model(model)
+                
+        except Exception as e:
+            yield f"\n\n[Error: {str(e)}]"
+            self._unload_ollama_model(model)
     
     def _unload_ollama_model(self, model: str):
         """Unload Ollama model from memory immediately"""

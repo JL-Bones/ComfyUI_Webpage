@@ -28,6 +28,24 @@ User suggestion: {suggestion}
 
 Apply the user's suggestion to the prompt. Return ONLY the modified prompt without explanations."""
 
+# Batch Prompt Optimization Instructions (for prompts with [parameters])
+OPTIMIZE_BATCH_PROMPT_INSTRUCTION = """You are an expert at writing image generation prompt templates for batch generation with parameters.
+
+Your task is to optimize a prompt template that contains [parameter] placeholders. The parameters will be replaced with different values to generate multiple images.
+
+Guidelines for optimization:
+- Keep ALL [parameter] placeholders intact - DO NOT remove or replace them
+- Add descriptive details around the parameters to enhance image quality
+- Include lighting, composition, style, and quality descriptors
+- Use comma-separated phrases for better AI interpretation
+- Add quality tags like "high quality", "detailed", "professional"
+- Consider camera angles, mood, or atmosphere that work with varied parameters
+- Make sure the template flows naturally when parameters are replaced with values
+
+Original template: {prompt}
+
+Return ONLY the optimized template with [parameters] preserved, without explanations."""
+
 # Parameter Generation Instructions
 GENERATE_PARAMETERS_INSTRUCTION = """You are generating diverse variations for an image generation batch.
 
@@ -39,7 +57,7 @@ Generate {count} diverse and creative variations. Output ONLY a CSV with these e
 Requirements:
 - First row must be the parameter names (comma-separated)
 - Generate exactly {count} data rows
-- Each value should be unique and creative
+- Each value should be unique and creative detailed and long if needed.
 - Values should be coherent and work well together
 - No explanations, just the CSV data
 - Do not use quotes around values unless they contain commas

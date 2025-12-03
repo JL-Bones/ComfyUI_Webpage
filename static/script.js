@@ -28,6 +28,15 @@ let lastTouchDistance = 0;
 let autoplayTimer = null;
 let isAutoplayActive = false;
 
+// Batch generation state
+let batchPreviewData = [];
+let detectedBatchParameters = [];
+
+// AI streaming state
+let activeStream = null;
+let currentStreamModel = null;
+let currentStreamProvider = null;
+
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
     initializeEventListeners();
@@ -167,6 +176,9 @@ function initializeEventListeners() {
     
     // Keyboard shortcuts
     document.addEventListener('keydown', handleKeyboard);
+    
+    // Batch generation
+    initializeBatchGeneration();
 }
 
 // Mobile Menu Toggle
@@ -241,6 +253,7 @@ function switchTab(tabName) {
     
     const tabs = {
         'single': 'singleTab',
+        'batch': 'batchTab',
         'browser': 'browserTab'
     };
     
@@ -1509,7 +1522,847 @@ function formatDate(isoString) {
 // Initialize when DOM loads
 document.addEventListener('DOMContentLoaded', function() {
     initializeAIFeatures();
+    initializeBatchAIFeatures();
 });
+
+// ============================================================================
+// BATCH GENERATION FEATURES
+// ============================================================================
+
+function initializeBatchGeneration() {
+    // Batch prompt and CSV inputs
+    const batchBasePrompt = document.getElementById('batchBasePrompt');
+    const batchCSV = document.getElementById('batchCSV');
+    
+    if (batchBasePrompt) {
+        batchBasePrompt.addEventListener('input', updateBatchPreview);
+    }
+    
+    if (batchCSV) {
+        batchCSV.addEventListener('input', updateBatchPreview);
+    }
+    
+    // Batch buttons
+    const queueBatchBtn = document.getElementById('queueBatchBtn');
+    const loadCSVFileBtn = document.getElementById('loadCSVFile');
+    const csvFileInput = document.getElementById('csvFileInput');
+    const editBatchPromptWithAI = document.getElementById('editBatchPromptWithAI');
+    const generateCSVWithAI = document.getElementById('generateCSVWithAI');
+    const editParameterValuesBtn = document.getElementById('editParameterValuesBtn');
+    
+    if (queueBatchBtn) {
+        queueBatchBtn.addEventListener('click', queueBatchGeneration);
+    }
+    
+    if (loadCSVFileBtn && csvFileInput) {
+        loadCSVFileBtn.addEventListener('click', () => csvFileInput.click());
+        csvFileInput.addEventListener('change', handleCSVFileUpload);
+    }
+    
+    if (editBatchPromptWithAI) {
+        editBatchPromptWithAI.addEventListener('click', () => openAIEditModal('batch'));
+    }
+    
+    if (generateCSVWithAI) {
+        generateCSVWithAI.addEventListener('click', openAIParameterModal);
+    }
+    
+    if (editParameterValuesBtn) {
+        editParameterValuesBtn.addEventListener('click', openParameterEditModal);
+    }
+    
+    // Add event listeners to variable parameter checkboxes
+    const variableCheckboxes = document.querySelectorAll('.batch-param-variable');
+    variableCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', updateBatchPreview);
+    });
+}
+
+function extractParameters(basePrompt) {
+    // Extract [parameter] placeholders
+    const regex = /\[([^\]]+)\]/g;
+    const parameters = [];
+    let match;
+    
+    while ((match = regex.exec(basePrompt)) !== null) {
+        if (!parameters.includes(match[1])) {
+            parameters.push(match[1]);
+        }
+    }
+    
+    return parameters;
+}
+
+function parseCSV(csvText) {
+    const lines = csvText.trim().split('\n').filter(line => line.trim());
+    if (lines.length < 2) return null;
+    
+    const headers = lines[0].split(',').map(h => h.trim());
+    const rows = [];
+    
+    for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(',').map(v => v.trim());
+        if (values.length === headers.length) {
+            const row = {};
+            headers.forEach((header, index) => {
+                row[header] = values[index];
+            });
+            rows.push(row);
+        }
+    }
+    
+    return { headers, rows };
+}
+
+function replaceParameters(basePrompt, paramValues) {
+    let result = basePrompt;
+    for (const [param, value] of Object.entries(paramValues)) {
+        result = result.replace(new RegExp(`\\[${param}\\]`, 'g'), value);
+    }
+    return result;
+}
+
+function getVariableParameters() {
+    // Returns list of parameter names that should come from CSV
+    const variableParams = [];
+    
+    if (document.getElementById('batchWidthVariable').checked) variableParams.push('width');
+    if (document.getElementById('batchHeightVariable').checked) variableParams.push('height');
+    if (document.getElementById('batchStepsVariable').checked) variableParams.push('steps');
+    if (document.getElementById('batchSeedVariable').checked) variableParams.push('seed');
+    if (document.getElementById('batchFilePrefixVariable').checked) variableParams.push('file_prefix');
+    if (document.getElementById('batchSubfolderVariable').checked) variableParams.push('subfolder');
+    if (document.getElementById('batchMcnlLoraVariable').checked) variableParams.push('mcnl_lora');
+    if (document.getElementById('batchSnofsLoraVariable').checked) variableParams.push('snofs_lora');
+    if (document.getElementById('batchOfaceLoraVariable').checked) variableParams.push('oface_lora');
+    
+    return variableParams;
+}
+
+function updateBatchPreview() {
+    const basePrompt = document.getElementById('batchBasePrompt').value.trim();
+    const csvText = document.getElementById('batchCSV').value.trim();
+    const detectedParams = document.getElementById('detectedParameters');
+    const batchPreview = document.getElementById('batchPreview');
+    const queueBatchBtn = document.getElementById('queueBatchBtn');
+    const batchCount = document.getElementById('batchCount');
+    
+    // Extract parameters from base prompt
+    detectedBatchParameters = extractParameters(basePrompt);
+    const variableParams = getVariableParameters();
+    const allRequiredParams = [...detectedBatchParameters, ...variableParams];
+    
+    if (detectedParams) {
+        const displayParts = [];
+        if (detectedBatchParameters.length > 0) {
+            displayParts.push(detectedBatchParameters.join(', '));
+        }
+        if (variableParams.length > 0) {
+            displayParts.push(`+ ${variableParams.length} variable param(s)`);
+        }
+        
+        if (displayParts.length > 0) {
+            detectedParams.textContent = displayParts.join(' ');
+            detectedParams.style.color = 'var(--primary)';
+        } else {
+            detectedParams.textContent = 'None';
+            detectedParams.style.color = 'var(--text-muted)';
+        }
+    }
+    
+    // Parse CSV
+    if (!basePrompt || !csvText) {
+        batchPreview.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 2rem;">Enter a base prompt with parameters and CSV data to preview the batch</div>';
+        queueBatchBtn.disabled = true;
+        batchCount.textContent = '0';
+        batchPreviewData = [];
+        return;
+    }
+    
+    const csvData = parseCSV(csvText);
+    if (!csvData) {
+        batchPreview.innerHTML = '<div style="text-align: center; color: var(--warning); padding: 2rem;">Invalid CSV format. First row should be parameter names, followed by value rows.</div>';
+        queueBatchBtn.disabled = true;
+        batchCount.textContent = '0';
+        batchPreviewData = [];
+        return;
+    }
+    
+    // Check if CSV headers match parameters (both prompt and variable params)
+    const missingParams = allRequiredParams.filter(p => !csvData.headers.includes(p));
+    const extraHeaders = csvData.headers.filter(h => !allRequiredParams.includes(h));
+    
+    if (missingParams.length > 0) {
+        batchPreview.innerHTML = `<div style="text-align: center; color: var(--warning); padding: 2rem;">Missing CSV columns: ${missingParams.join(', ')}</div>`;
+        queueBatchBtn.disabled = true;
+        batchCount.textContent = '0';
+        batchPreviewData = [];
+        return;
+    }
+    
+    // Generate preview
+    batchPreviewData = csvData.rows.map(row => {
+        const prompt = replaceParameters(basePrompt, row);
+        return { prompt, params: row };
+    });
+    
+    let html = '<div style="display: flex; flex-direction: column; gap: 0.75rem;">';
+    batchPreviewData.forEach((item, index) => {
+        // Build parameter info display
+        const paramInfo = [];
+        variableParams.forEach(param => {
+            if (item.params[param] !== undefined) {
+                paramInfo.push(`${param}: ${item.params[param]}`);
+            }
+        });
+        const paramDisplay = paramInfo.length > 0 ? `<div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">${escapeHtml(paramInfo.join(', '))}</div>` : '';
+        
+        html += `
+            <div style="padding: 0.75rem; background: var(--bg-secondary); border-radius: 4px; border-left: 3px solid var(--primary);">
+                <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.25rem;">Image ${index + 1}</div>
+                <div style="font-size: 0.95rem; color: var(--text);">${escapeHtml(item.prompt)}</div>
+                ${paramDisplay}
+            </div>
+        `;
+    });
+    html += '</div>';
+    
+    if (extraHeaders.length > 0) {
+        html = `<div style="color: var(--warning); font-size: 0.9rem; margin-bottom: 0.75rem; padding: 0.5rem; background: var(--bg-secondary); border-radius: 4px;">
+            ⚠️ Extra CSV columns (will be ignored): ${extraHeaders.join(', ')}
+        </div>` + html;
+    }
+    
+    batchPreview.innerHTML = html;
+    queueBatchBtn.disabled = false;
+    batchCount.textContent = batchPreviewData.length.toString();
+}
+
+async function queueBatchGeneration() {
+    if (batchPreviewData.length === 0) {
+        showNotification('No valid batch data to queue', 'Empty Batch', 'warning');
+        return;
+    }
+    
+    // Get default parameters
+    const defaults = {
+        width: parseInt(document.getElementById('batchWidth').value),
+        height: parseInt(document.getElementById('batchHeight').value),
+        steps: parseInt(document.getElementById('batchSteps').value),
+        seed: document.getElementById('batchSeed').value ? parseInt(document.getElementById('batchSeed').value) : null,
+        file_prefix: document.getElementById('batchFilePrefix').value.trim() || 'batch',
+        subfolder: document.getElementById('batchSubfolder').value.trim(),
+        mcnl_lora: document.getElementById('batchMcnlLora').checked,
+        snofs_lora: document.getElementById('batchSnofsLora').checked,
+        oface_lora: document.getElementById('batchOfaceLora').checked
+    };
+    
+    const variableParams = getVariableParameters();
+    
+    // Prepare batch jobs
+    const jobs = batchPreviewData.map(item => {
+        const job = {
+            prompt: item.prompt,
+            width: defaults.width,
+            height: defaults.height,
+            steps: defaults.steps,
+            seed: defaults.seed,
+            file_prefix: defaults.file_prefix,
+            subfolder: defaults.subfolder,
+            mcnl_lora: defaults.mcnl_lora,
+            snofs_lora: defaults.snofs_lora,
+            oface_lora: defaults.oface_lora
+        };
+        
+        // Override with CSV values for variable parameters
+        variableParams.forEach(param => {
+            if (item.params[param] !== undefined) {
+                const value = item.params[param];
+                
+                // Convert types appropriately
+                if (param === 'width' || param === 'height' || param === 'steps' || param === 'seed') {
+                    job[param] = value ? parseInt(value) : (param === 'seed' ? null : job[param]);
+                } else if (param === 'mcnl_lora' || param === 'snofs_lora' || param === 'oface_lora') {
+                    // Convert to boolean (true/false, yes/no, 1/0)
+                    const lowerValue = String(value).toLowerCase().trim();
+                    job[param] = lowerValue === 'true' || lowerValue === 'yes' || lowerValue === '1';
+                } else {
+                    job[param] = value;
+                }
+            }
+        });
+        
+        return job;
+    });
+    
+    try {
+        const response = await fetch('/api/queue/batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ jobs: jobs })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification(`Queued ${result.queued_count} images successfully`, 'Batch Queued', 'success', 3000);
+            updateQueue();
+        } else {
+            showNotification('Error: ' + result.error, 'Queue Failed', 'error');
+        }
+    } catch (error) {
+        console.error('Error queueing batch:', error);
+        showNotification('Error queueing batch', 'Error', 'error');
+    }
+}
+
+async function handleCSVFileUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    try {
+        const text = await file.text();
+        document.getElementById('batchCSV').value = text;
+        updateBatchPreview();
+        showNotification('CSV file loaded successfully', 'Loaded', 'success', 2000);
+    } catch (error) {
+        console.error('Error reading CSV file:', error);
+        showNotification('Error reading CSV file', 'Error', 'error');
+    }
+    
+    // Reset file input
+    event.target.value = '';
+}
+
+// ============================================================================
+// BATCH AI FEATURES
+// ============================================================================
+
+function initializeBatchAIFeatures() {
+    // AI Parameter Modal events
+    const aiParamProvider = document.getElementById('aiParamProvider');
+    const aiParamModalCancelBtn = document.getElementById('aiParamModalCancelBtn');
+    const aiParamModalUseBtn = document.getElementById('aiParamModalUseBtn');
+    const aiGenerateParamsBtn = document.getElementById('aiGenerateParamsBtn');
+    
+    if (aiParamProvider) {
+        aiParamProvider.addEventListener('change', updateAIParamModelList);
+    }
+    
+    if (aiParamModalCancelBtn) {
+        aiParamModalCancelBtn.addEventListener('click', closeAIParameterModal);
+    }
+    
+    if (aiParamModalUseBtn) {
+        aiParamModalUseBtn.addEventListener('click', useAIGeneratedCSV);
+    }
+    
+    if (aiGenerateParamsBtn) {
+        aiGenerateParamsBtn.addEventListener('click', generateCSVWithAI);
+    }
+    
+    const aiParamStopBtn = document.getElementById('aiParamStopBtn');
+    if (aiParamStopBtn) {
+        aiParamStopBtn.addEventListener('click', stopAIGeneration);
+    }
+}
+
+function openAIParameterModal() {
+    const basePrompt = document.getElementById('batchBasePrompt').value.trim();
+    
+    if (!basePrompt) {
+        showNotification('Please enter a base prompt first', 'Empty Prompt', 'warning');
+        return;
+    }
+    
+    if (detectedBatchParameters.length === 0) {
+        showNotification('No parameters detected in base prompt. Use [parameter] syntax.', 'No Parameters', 'warning');
+        return;
+    }
+    
+    // Reset form
+    document.getElementById('aiParamCount').value = '5';
+    document.getElementById('aiParamContext').value = '';
+    document.getElementById('aiParamResult').value = '';
+    document.getElementById('aiParamIncludeBasePrompt').checked = true;
+    document.getElementById('aiParamIncludeInstructions').checked = true;
+    document.getElementById('aiParamIncludeCustom').checked = false;
+    
+    // Show modal
+    document.getElementById('aiParameterModal').style.display = 'flex';
+}
+
+function closeAIParameterModal() {
+    document.getElementById('aiParameterModal').style.display = 'none';
+}
+
+async function generateCSVWithAI() {
+    const basePrompt = document.getElementById('batchBasePrompt').value.trim();
+    const count = parseInt(document.getElementById('aiParamCount').value);
+    const provider = document.getElementById('aiParamProvider').value;
+    const model = document.getElementById('aiParamModel').value;
+    const customContext = document.getElementById('aiParamContext').value.trim();
+    
+    const includeBasePrompt = document.getElementById('aiParamIncludeBasePrompt').checked;
+    const includeInstructions = document.getElementById('aiParamIncludeInstructions').checked;
+    const includeCustom = document.getElementById('aiParamIncludeCustom').checked;
+    
+    if (!model) {
+        showNotification('Please select a model', 'No Model Selected', 'warning');
+        return;
+    }
+    
+    if (!includeBasePrompt && !includeInstructions && !customContext) {
+        showNotification('Please provide at least one context option', 'No Context', 'warning');
+        return;
+    }
+    
+    // Store for stop button
+    currentStreamModel = model;
+    currentStreamProvider = provider;
+    
+    // Show loading and stop button for Ollama
+    document.getElementById('aiParamLoadingIndicator').style.display = 'block';
+    document.getElementById('aiGenerateParamsBtn').disabled = true;
+    if (provider === 'ollama') {
+        document.getElementById('aiParamStopBtn').style.display = 'block';
+    }
+    
+    document.getElementById('aiParamResult').value = '';
+    
+    // Get all required parameters (prompt + variable)
+    const variableParams = getVariableParameters();
+    const allParameters = [...detectedBatchParameters, ...variableParams];
+    
+    try {
+        if (provider === 'ollama') {
+            // Use streaming for Ollama
+            await streamAIResponse('/api/ai/generate-csv', {
+                base_prompt: includeBasePrompt ? basePrompt : null,
+                parameters: allParameters,
+                variable_parameters: variableParams,
+                count: count,
+                model: model,
+                provider: provider,
+                custom_context: includeCustom ? customContext : null,
+                use_instructions: includeInstructions,
+                stream: true
+            }, 'aiParamResult');
+            showNotification('CSV generated successfully!', 'Success', 'success', 3000);
+        } else {
+            // Non-streaming for Gemini
+            const response = await fetch('/api/ai/generate-csv', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    base_prompt: includeBasePrompt ? basePrompt : null,
+                    parameters: allParameters,
+                    variable_parameters: variableParams,
+                    count: count,
+                    model: model,
+                    provider: provider,
+                    custom_context: includeCustom ? customContext : null,
+                    use_instructions: includeInstructions
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                document.getElementById('aiParamResult').value = result.csv_data;
+                showNotification('CSV generated successfully!', 'Success', 'success', 3000);
+            } else {
+                showNotification('Error: ' + result.error, 'Generation Failed', 'error');
+            }
+        }
+    } catch (error) {
+        if (error.message !== 'Stream aborted') {
+            console.error('AI CSV generation error:', error);
+            showNotification('Network error occurred', 'Error', 'error');
+        }
+    } finally {
+        document.getElementById('aiParamLoadingIndicator').style.display = 'none';
+        document.getElementById('aiGenerateParamsBtn').disabled = false;
+        document.getElementById('aiParamStopBtn').style.display = 'none';
+        activeStream = null;
+        currentStreamModel = null;
+        currentStreamProvider = null;
+    }
+}
+
+function useAIGeneratedCSV() {
+    const csvData = document.getElementById('aiParamResult').value.trim();
+    
+    if (!csvData) {
+        showNotification('No CSV data to use', 'Empty Result', 'warning');
+        return;
+    }
+    
+    // Set CSV in batch tab
+    document.getElementById('batchCSV').value = csvData;
+    updateBatchPreview();
+    
+    closeAIParameterModal();
+    showNotification('CSV data applied to batch', 'Applied', 'success', 3000);
+}
+
+function updateAIParamModelList() {
+    const provider = document.getElementById('aiParamProvider').value;
+    const modelSelect = document.getElementById('aiParamModel');
+    
+    const models = aiModels[provider] || [];
+    
+    if (models.length === 0) {
+        modelSelect.innerHTML = '<option value="">No models available</option>';
+    } else {
+        modelSelect.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
+    }
+}
+
+// ============================================================================
+// PER-PARAMETER VALUE EDITING
+// ============================================================================
+
+function openParameterEditModal() {
+    const basePrompt = document.getElementById('batchBasePrompt').value.trim();
+    const csvText = document.getElementById('batchCSV').value.trim();
+    
+    // Get all available parameters (prompt + variable)
+    const promptParams = basePrompt ? extractParameters(basePrompt) : [];
+    const variableParams = getVariableParameters();
+    const allParams = [...promptParams, ...variableParams];
+    
+    if (allParams.length === 0) {
+        showNotification('No parameters available. Add [parameters] to prompt or check "Use from CSV" options.', 'No Parameters', 'warning');
+        return;
+    }
+    
+    // Populate parameter dropdown (now multi-select)
+    const paramSelect = document.getElementById('editParamSelect');
+    paramSelect.innerHTML = allParams.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
+    
+    // Count existing rows if CSV exists
+    if (csvText) {
+        const parsed = parseCSV(csvText);
+        if (parsed) {
+            document.getElementById('editParamCount').value = parsed.rows.length;
+        }
+    }
+    
+    // Reset form
+    document.getElementById('editParamInstructions').value = '';
+    document.getElementById('editParamResult').value = '';
+    
+    // Setup event listeners
+    setupParameterEditModalListeners();
+    
+    // Show modal
+    document.getElementById('parameterEditModal').style.display = 'flex';
+}
+
+function setupParameterEditModalListeners() {
+    // Provider change
+    const editParamProvider = document.getElementById('editParamProvider');
+    if (editParamProvider) {
+        editParamProvider.removeEventListener('change', updateEditParamModelList);
+        editParamProvider.addEventListener('change', updateEditParamModelList);
+    }
+    
+    // Generate button
+    const editParamGenerateBtn = document.getElementById('editParamGenerateBtn');
+    if (editParamGenerateBtn) {
+        editParamGenerateBtn.removeEventListener('click', generateParameterValues);
+        editParamGenerateBtn.addEventListener('click', generateParameterValues);
+    }
+    
+    // Cancel button
+    const editParamModalCancelBtn = document.getElementById('editParamModalCancelBtn');
+    if (editParamModalCancelBtn) {
+        editParamModalCancelBtn.removeEventListener('click', closeParameterEditModal);
+        editParamModalCancelBtn.addEventListener('click', closeParameterEditModal);
+    }
+    
+    // Apply button
+    const editParamModalApplyBtn = document.getElementById('editParamModalApplyBtn');
+    if (editParamModalApplyBtn) {
+        editParamModalApplyBtn.removeEventListener('click', applyParameterValues);
+        editParamModalApplyBtn.addEventListener('click', applyParameterValues);
+    }
+    
+    // Stop button
+    const editParamStopBtn = document.getElementById('editParamStopBtn');
+    if (editParamStopBtn) {
+        editParamStopBtn.removeEventListener('click', stopAIGeneration);
+        editParamStopBtn.addEventListener('click', stopAIGeneration);
+    }
+    
+    // Update model list
+    updateEditParamModelList();
+}
+
+function closeParameterEditModal() {
+    document.getElementById('parameterEditModal').style.display = 'none';
+}
+
+function updateEditParamModelList() {
+    const provider = document.getElementById('editParamProvider').value;
+    const modelSelect = document.getElementById('editParamModel');
+    
+    const models = aiModels[provider] || [];
+    
+    if (models.length === 0) {
+        modelSelect.innerHTML = '<option value="">No models available</option>';
+    } else {
+        modelSelect.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
+    }
+}
+
+async function generateParameterValues() {
+    const paramSelect = document.getElementById('editParamSelect');
+    const selectedParams = Array.from(paramSelect.selectedOptions).map(opt => opt.value);
+    const count = parseInt(document.getElementById('editParamCount').value);
+    const provider = document.getElementById('editParamProvider').value;
+    const model = document.getElementById('editParamModel').value;
+    const instructions = document.getElementById('editParamInstructions').value.trim();
+    
+    if (selectedParams.length === 0) {
+        showNotification('Please select at least one parameter', 'No Parameters', 'warning');
+        return;
+    }
+    
+    if (!model) {
+        showNotification('Please select a model', 'No Model', 'warning');
+        return;
+    }
+    
+    // Store for stop button
+    currentStreamModel = model;
+    currentStreamProvider = provider;
+    
+    // Show loading and stop button for Ollama
+    document.getElementById('editParamLoadingIndicator').style.display = 'block';
+    document.getElementById('editParamGenerateBtn').disabled = true;
+    if (provider === 'ollama') {
+        document.getElementById('editParamStopBtn').style.display = 'block';
+    }
+    
+    document.getElementById('editParamResult').value = '';
+    
+    try {
+        if (selectedParams.length === 1) {
+            // Single parameter - generate as list
+            const parameter = selectedParams[0];
+            
+            if (provider === 'ollama') {
+                // Use streaming for Ollama
+                await streamAIResponse('/api/ai/generate-parameter-values', {
+                    parameter: parameter,
+                    count: count,
+                    model: model,
+                    provider: provider,
+                    instructions: instructions,
+                    stream: true
+                }, 'editParamResult');
+                const valueCount = document.getElementById('editParamResult').value.split('\n').filter(v => v.trim()).length;
+                showNotification(`Generated ${valueCount} values for ${parameter}`, 'Success', 'success', 3000);
+            } else {
+                // Non-streaming for Gemini
+                const response = await fetch('/api/ai/generate-parameter-values', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        parameter: parameter,
+                        count: count,
+                        model: model,
+                        provider: provider,
+                        instructions: instructions
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    document.getElementById('editParamResult').value = result.values.join('\n');
+                    showNotification(`Generated ${result.values.length} values for ${parameter}`, 'Success', 'success', 3000);
+                } else {
+                    showNotification('Error: ' + result.error, 'Generation Failed', 'error');
+                }
+            }
+        } else {
+            // Multiple parameters - generate as CSV
+            if (provider === 'ollama') {
+                // Use streaming CSV generation
+                await streamAIResponse('/api/ai/generate-csv', {
+                    base_prompt: null,
+                    parameters: selectedParams,
+                    variable_parameters: [],
+                    count: count,
+                    model: model,
+                    provider: provider,
+                    custom_context: instructions || null,
+                    use_instructions: true,
+                    stream: true
+                }, 'editParamResult');
+                showNotification(`Generated ${count} rows for ${selectedParams.length} parameters`, 'Success', 'success', 3000);
+            } else {
+                // Non-streaming CSV generation for Gemini
+                const response = await fetch('/api/ai/generate-csv', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        base_prompt: null,
+                        parameters: selectedParams,
+                        variable_parameters: [],
+                        count: count,
+                        model: model,
+                        provider: provider,
+                        custom_context: instructions || null,
+                        use_instructions: true
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    document.getElementById('editParamResult').value = result.csv_data;
+                    showNotification(`Generated ${count} rows for ${selectedParams.length} parameters`, 'Success', 'success', 3000);
+                } else {
+                    showNotification('Error: ' + result.error, 'Generation Failed', 'error');
+                }
+            }
+        }
+    } catch (error) {
+        if (error.message !== 'Stream aborted') {
+            console.error('Parameter value generation error:', error);
+            showNotification('Network error occurred', 'Error', 'error');
+        }
+    } finally {
+        document.getElementById('editParamLoadingIndicator').style.display = 'none';
+        document.getElementById('editParamGenerateBtn').disabled = false;
+        document.getElementById('editParamStopBtn').style.display = 'none';
+        activeStream = null;
+        currentStreamModel = null;
+        currentStreamProvider = null;
+    }
+}
+
+function applyParameterValues() {
+    const paramSelect = document.getElementById('editParamSelect');
+    const selectedParams = Array.from(paramSelect.selectedOptions).map(opt => opt.value);
+    const valuesText = document.getElementById('editParamResult').value.trim();
+    
+    if (selectedParams.length === 0) {
+        showNotification('Please select at least one parameter', 'No Parameters', 'warning');
+        return;
+    }
+    
+    if (!valuesText) {
+        showNotification('No values to apply', 'Empty Values', 'warning');
+        return;
+    }
+    
+    // Get current CSV
+    const csvText = document.getElementById('batchCSV').value.trim();
+    let csvData;
+    
+    if (csvText) {
+        csvData = parseCSV(csvText);
+        if (!csvData) {
+            showNotification('Current CSV is invalid', 'Invalid CSV', 'error');
+            return;
+        }
+    } else {
+        // Create new CSV
+        csvData = { headers: [], rows: [] };
+    }
+    
+    if (selectedParams.length === 1) {
+        // Single parameter - values are one per line
+        const parameter = selectedParams[0];
+        const values = valuesText.split('\n').map(v => v.trim()).filter(v => v);
+        
+        if (values.length === 0) {
+            showNotification('No valid values found', 'Empty Values', 'warning');
+            return;
+        }
+        
+        // Check if parameter exists in headers
+        if (!csvData.headers.includes(parameter)) {
+            csvData.headers.push(parameter);
+        }
+        
+        // Update or create rows
+        for (let i = 0; i < values.length; i++) {
+            if (i < csvData.rows.length) {
+                // Update existing row
+                csvData.rows[i][parameter] = values[i];
+            } else {
+                // Create new row
+                const newRow = {};
+                csvData.headers.forEach(h => newRow[h] = '');
+                newRow[parameter] = values[i];
+                csvData.rows.push(newRow);
+            }
+        }
+        
+        showNotification(`Applied ${values.length} values to "${parameter}" column`, 'Applied', 'success', 3000);
+    } else {
+        // Multiple parameters - values are in CSV format
+        const newData = parseCSV(valuesText);
+        
+        if (!newData || newData.rows.length === 0) {
+            showNotification('Generated data is not valid CSV', 'Invalid Data', 'error');
+            return;
+        }
+        
+        // Add any new headers from generated data
+        newData.headers.forEach(header => {
+            if (!csvData.headers.includes(header)) {
+                csvData.headers.push(header);
+            }
+        });
+        
+        // Merge or replace rows
+        for (let i = 0; i < newData.rows.length; i++) {
+            if (i < csvData.rows.length) {
+                // Update existing row with new parameter values
+                selectedParams.forEach(param => {
+                    if (newData.rows[i][param] !== undefined) {
+                        csvData.rows[i][param] = newData.rows[i][param];
+                    }
+                });
+            } else {
+                // Create new row
+                const newRow = {};
+                csvData.headers.forEach(h => newRow[h] = '');
+                selectedParams.forEach(param => {
+                    if (newData.rows[i][param] !== undefined) {
+                        newRow[param] = newData.rows[i][param];
+                    }
+                });
+                csvData.rows.push(newRow);
+            }
+        }
+        
+        showNotification(`Applied ${newData.rows.length} rows for ${selectedParams.length} parameters`, 'Applied', 'success', 3000);
+    }
+    
+    // Convert back to CSV text
+    const newCSVLines = [csvData.headers.join(',')];
+    csvData.rows.forEach(row => {
+        const line = csvData.headers.map(h => row[h] || '').join(',');
+        newCSVLines.push(line);
+    });
+    
+    const newCSVText = newCSVLines.join('\n');
+    
+    // Apply to batch tab
+    document.getElementById('batchCSV').value = newCSVText;
+    updateBatchPreview();
+    
+    closeParameterEditModal();
+    showNotification(`Applied ${values.length} values to "${parameter}" column`, 'Applied', 'success', 3000);
+}
 
 // ============================================================================
 // AI ASSISTANT FEATURES
@@ -1532,15 +2385,105 @@ function initializeAIFeatures() {
     document.getElementById('aiOptimizeBtn').addEventListener('click', aiOptimizePrompt);
     document.getElementById('aiApplySuggestionBtn').addEventListener('click', aiApplySuggestion);
     document.getElementById('aiCopyPromptBtn').addEventListener('click', aiCopyCurrentPrompt);
+    document.getElementById('aiCopyOptimizeInstructionsBtn').addEventListener('click', aiCopyOptimizeInstructions);
+    document.getElementById('aiStopBtn').addEventListener('click', stopAIGeneration);
     document.getElementById('aiModalCancelBtn').addEventListener('click', closeAIEditModal);
     document.getElementById('aiModalUseBtn').addEventListener('click', aiUseResult);
-    
-    // Allow Enter key in suggestion input
-    document.getElementById('aiSuggestion').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            aiApplySuggestion();
-        }
+}
+
+// Streaming helper function
+async function streamAIResponse(endpoint, payload, targetElementId) {
+    const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
     });
+    
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    
+    activeStream = reader;
+    
+    try {
+        while (true) {
+            const { value, done } = await reader.read();
+            
+            if (done) break;
+            
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+            
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    const data = JSON.parse(line.slice(6));
+                    if (data.done) {
+                        return;
+                    }
+                    if (data.text) {
+                        document.getElementById(targetElementId).value += data.text;
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            throw new Error('Stream aborted');
+        }
+        throw error;
+    } finally {
+        activeStream = null;
+    }
+}
+
+// Stop AI generation
+async function stopAIGeneration() {
+    if (activeStream) {
+        try {
+            await activeStream.cancel();
+        } catch (e) {
+            console.error('Error canceling stream:', e);
+        }
+        activeStream = null;
+    }
+    
+    if (currentStreamModel && currentStreamProvider === 'ollama') {
+        try {
+            await fetch('/api/ai/stop', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: currentStreamModel,
+                    provider: currentStreamProvider
+                })
+            });
+            showNotification('Generation stopped and model unloaded', 'Stopped', 'success', 2000);
+        } catch (error) {
+            console.error('Error stopping AI:', error);
+        }
+    }
+    
+    // Hide all stop buttons and re-enable generate buttons
+    document.getElementById('aiStopBtn').style.display = 'none';
+    document.getElementById('aiOptimizeBtn').disabled = false;
+    document.getElementById('aiApplySuggestionBtn').disabled = false;
+    document.getElementById('aiLoadingIndicator').style.display = 'none';
+    
+    document.getElementById('aiParamStopBtn').style.display = 'none';
+    document.getElementById('aiGenerateParamsBtn').disabled = false;
+    document.getElementById('aiParamLoadingIndicator').style.display = 'none';
+    
+    document.getElementById('editParamStopBtn').style.display = 'none';
+    document.getElementById('editParamGenerateBtn').disabled = false;
+    document.getElementById('editParamLoadingIndicator').style.display = 'none';
+    
+    currentStreamModel = null;
+    currentStreamProvider = null;
 }
 
 async function loadAIModels() {
@@ -1588,7 +2531,12 @@ function updateAIModelList() {
 function openAIEditModal(source) {
     aiCurrentPromptSource = source;
     
-    const promptText = document.getElementById('prompt').value.trim();
+    let promptText = '';
+    if (source === 'single') {
+        promptText = document.getElementById('prompt').value.trim();
+    } else if (source === 'batch') {
+        promptText = document.getElementById('batchBasePrompt').value.trim();
+    }
     
     if (!promptText) {
         showNotification('Please enter a prompt first', 'Empty Prompt', 'warning');
@@ -1613,6 +2561,8 @@ async function aiOptimizePrompt() {
     const prompt = document.getElementById('aiCurrentPrompt').value.trim();
     const provider = document.getElementById('aiProvider').value;
     const model = document.getElementById('aiModel').value;
+    const useInstructions = document.getElementById('aiUseOptimizeInstructions').checked;
+    const isBatchPrompt = aiCurrentPromptSource === 'batch';
     
     if (!model) {
         showNotification('Please select a model', 'No Model Selected', 'warning');
@@ -1624,31 +2574,55 @@ async function aiOptimizePrompt() {
         return;
     }
     
-    // Show loading
+    // Store for stop button
+    currentStreamModel = model;
+    currentStreamProvider = provider;
+    
+    // Show loading and stop button for Ollama
     document.getElementById('aiLoadingIndicator').style.display = 'block';
     document.getElementById('aiOptimizeBtn').disabled = true;
+    if (provider === 'ollama') {
+        document.getElementById('aiStopBtn').style.display = 'block';
+    }
+    
+    document.getElementById('aiResult').value = '';
     
     try {
-        const response = await fetch('/api/ai/optimize', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt, model, provider })
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            document.getElementById('aiResult').value = result.optimized_prompt;
+        if (provider === 'ollama') {
+            // Use streaming for Ollama
+            await streamAIResponse('/api/ai/optimize', {
+                prompt, model, provider, use_instructions: useInstructions, is_batch: isBatchPrompt, stream: true
+            }, 'aiResult');
             showNotification('Prompt optimized successfully!', 'Success', 'success', 3000);
         } else {
-            showNotification('Error: ' + result.error, 'Optimization Failed', 'error');
+            // Non-streaming for Gemini
+            const response = await fetch('/api/ai/optimize', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt, model, provider, use_instructions: useInstructions, is_batch: isBatchPrompt })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                document.getElementById('aiResult').value = result.optimized_prompt;
+                showNotification('Prompt optimized successfully!', 'Success', 'success', 3000);
+            } else {
+                showNotification('Error: ' + result.error, 'Optimization Failed', 'error');
+            }
         }
     } catch (error) {
-        console.error('AI optimization error:', error);
-        showNotification('Network error occurred', 'Error', 'error');
+        if (error.message !== 'Stream aborted') {
+            console.error('AI optimization error:', error);
+            showNotification('Network error occurred', 'Error', 'error');
+        }
     } finally {
         document.getElementById('aiLoadingIndicator').style.display = 'none';
         document.getElementById('aiOptimizeBtn').disabled = false;
+        document.getElementById('aiStopBtn').style.display = 'none';
+        activeStream = null;
+        currentStreamModel = null;
+        currentStreamProvider = null;
     }
 }
 
@@ -1668,31 +2642,55 @@ async function aiApplySuggestion() {
         return;
     }
     
-    // Show loading
+    // Store for stop button
+    currentStreamModel = model;
+    currentStreamProvider = provider;
+    
+    // Show loading and stop button for Ollama
     document.getElementById('aiLoadingIndicator').style.display = 'block';
     document.getElementById('aiApplySuggestionBtn').disabled = true;
+    if (provider === 'ollama') {
+        document.getElementById('aiStopBtn').style.display = 'block';
+    }
+    
+    document.getElementById('aiResult').value = '';
     
     try {
-        const response = await fetch('/api/ai/suggest', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt, suggestion, model, provider })
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            document.getElementById('aiResult').value = result.edited_prompt || result.optimized_prompt;
+        if (provider === 'ollama') {
+            // Use streaming for Ollama
+            await streamAIResponse('/api/ai/suggest', {
+                prompt, suggestion, model, provider, stream: true
+            }, 'aiResult');
             showNotification('Suggestion applied successfully!', 'Success', 'success', 3000);
         } else {
-            showNotification('Error: ' + result.error, 'Suggestion Failed', 'error');
+            // Non-streaming for Gemini
+            const response = await fetch('/api/ai/suggest', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt, suggestion, model, provider })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                document.getElementById('aiResult').value = result.edited_prompt || result.optimized_prompt;
+                showNotification('Suggestion applied successfully!', 'Success', 'success', 3000);
+            } else {
+                showNotification('Error: ' + result.error, 'Suggestion Failed', 'error');
+            }
         }
     } catch (error) {
-        console.error('AI suggestion error:', error);
-        showNotification('Network error occurred', 'Error', 'error');
+        if (error.message !== 'Stream aborted') {
+            console.error('AI suggestion error:', error);
+            showNotification('Network error occurred', 'Error', 'error');
+        }
     } finally {
         document.getElementById('aiLoadingIndicator').style.display = 'none';
         document.getElementById('aiApplySuggestionBtn').disabled = false;
+        document.getElementById('aiStopBtn').style.display = 'none';
+        activeStream = null;
+        currentStreamModel = null;
+        currentStreamProvider = null;
     }
 }
 
@@ -1706,6 +2704,28 @@ function aiCopyCurrentPrompt() {
     });
 }
 
+function aiCopyOptimizeInstructions() {
+    // This will copy the optimize instructions that the backend uses
+    fetch('/api/ai/optimize-instructions')
+        .then(response => response.json())
+        .then(result => {
+            if (result.success && result.instructions) {
+                navigator.clipboard.writeText(result.instructions).then(() => {
+                    showNotification('Optimize instructions copied to clipboard', 'Copied', 'success', 2000);
+                }).catch(err => {
+                    console.error('Copy failed:', err);
+                    showNotification('Failed to copy', 'Error', 'error');
+                });
+            } else {
+                showNotification('Failed to get instructions', 'Error', 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching instructions:', error);
+            showNotification('Failed to get instructions', 'Error', 'error');
+        });
+}
+
 function aiUseResult() {
     const result = document.getElementById('aiResult').value.trim();
     
@@ -1714,8 +2734,13 @@ function aiUseResult() {
         return;
     }
     
-    // Update the prompt field
-    document.getElementById('prompt').value = result;
+    // Update the appropriate prompt field based on source
+    if (aiCurrentPromptSource === 'single') {
+        document.getElementById('prompt').value = result;
+    } else if (aiCurrentPromptSource === 'batch') {
+        document.getElementById('batchBasePrompt').value = result;
+        updateBatchPreview(); // Update preview with new prompt
+    }
     
     closeAIEditModal();
     showNotification('Prompt updated successfully', 'Updated', 'success', 3000);

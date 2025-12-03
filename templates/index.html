@@ -82,6 +82,7 @@
             <!-- Tab Navigation -->
             <div class="tab-navigation">
                 <button class="tab-btn active" data-tab="single">Single</button>
+                <button class="tab-btn" data-tab="batch">Batch</button>
                 <button class="tab-btn" data-tab="browser">Browser</button>
             </div>
 
@@ -235,6 +236,229 @@
                             </div>
                         </div>
                     </div>
+                    </div>
+                </section>
+
+                <!-- Batch Generation Tab -->
+                <section class="tab-content" id="batchTab">
+                    <div class="generation-panel">
+                        <div class="batch-header" style="margin-bottom: 1.5rem;">
+                            <h2 style="margin: 0 0 0.5rem 0;">Batch Generation</h2>
+                            <p style="color: var(--text-muted); margin: 0; font-size: 0.95rem;">
+                                Generate multiple images using a base prompt with parameters. Use [parameter] placeholders in your prompt and provide values via CSV.
+                            </p>
+                        </div>
+
+                        <!-- Base Prompt -->
+                        <div class="form-group">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                <label for="batchBasePrompt">Base Prompt with Parameters</label>
+                                <button class="btn btn-sm" id="editBatchPromptWithAI">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <circle cx="12" cy="12" r="10"></circle>
+                                        <polyline points="12 6 12 12 16 14"></polyline>
+                                    </svg>
+                                    <span>✨ Edit with AI</span>
+                                </button>
+                            </div>
+                            <textarea 
+                                id="batchBasePrompt" 
+                                rows="4" 
+                                placeholder="Example: A [age] year old girl wearing a [color] hat"
+                                class="form-control"
+                            ></textarea>
+                            <small style="color: var(--text-muted); display: block; margin-top: 0.25rem;">
+                                Use [parameterName] to mark replaceable parameters. Detected parameters: <span id="detectedParameters" style="color: var(--primary); font-weight: 500;">None</span>
+                            </small>
+                        </div>
+
+                        <!-- CSV Input -->
+                        <div class="form-group">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                <label for="batchCSV">Parameter Values (CSV)</label>
+                                <div class="csv-buttons-wrapper" style="display: flex; gap: 0.5rem;">
+                                    <button class="btn btn-sm" id="generateCSVWithAI">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <circle cx="12" cy="12" r="10"></circle>
+                                            <polyline points="12 6 12 12 16 14"></polyline>
+                                        </svg>
+                                        <span>✨ Generate CSV with AI</span>
+                                    </button>
+                                    <button class="btn btn-sm" id="editParameterValuesBtn">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                        </svg>
+                                        <span>✨ Edit Parameter Values</span>
+                                    </button>
+                                    <button class="btn btn-sm" id="loadCSVFile">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                            <polyline points="17 8 12 3 7 8"></polyline>
+                                            <line x1="12" y1="3" x2="12" y2="15"></line>
+                                        </svg>
+                                        <span>Load CSV File</span>
+                                    </button>
+                                    <input type="file" id="csvFileInput" accept=".csv" style="display: none;">
+                                </div>
+                            </div>
+                            <textarea 
+                                id="batchCSV" 
+                                rows="8" 
+                                placeholder="age,color&#10;12,red&#10;16,blue&#10;10,green"
+                                class="form-control"
+                                style="font-family: monospace; font-size: 0.9rem;"
+                            ></textarea>
+                            <small style="color: var(--text-muted); display: block; margin-top: 0.25rem;">
+                                First row: parameter names (must match [parameters] in prompt). Following rows: values for each image.
+                            </small>
+                        </div>
+
+                        <!-- Preview -->
+                        <div class="form-group">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                <label>Batch Preview</label>
+                                <button class="btn btn-primary" id="queueBatchBtn" disabled>
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                                    </svg>
+                                    <span>Queue <span id="batchCount">0</span> Images</span>
+                                </button>
+                            </div>
+                            <div id="batchPreview" class="batch-preview" style="max-height: 300px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px; padding: 1rem;">
+                                <div style="text-align: center; color: var(--text-muted); padding: 2rem;">
+                                    Enter a base prompt with parameters and CSV data to preview the batch
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Batch Parameters -->
+                        <button class="collapsible-header" data-target="batchParameters">
+                            <span>Parameters (Default or Per-Image via CSV)</span>
+                            <svg class="collapse-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                        </button>
+                        <div class="collapsible-content active" id="batchParameters">
+                            <small style="color: var(--text-muted); display: block; margin-bottom: 1rem;">
+                                Check "Use from CSV" to make a parameter vary per-image. Add a column in your CSV with the parameter name.
+                            </small>
+                            
+                            <div class="parameters-grid">
+                                <div class="form-group">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                                        <label for="batchWidth">Width</label>
+                                        <label class="checkbox-label" style="font-size: 0.85rem; margin: 0;">
+                                            <input type="checkbox" id="batchWidthVariable" class="checkbox-input batch-param-variable">
+                                            <span>Use from CSV</span>
+                                        </label>
+                                    </div>
+                                    <input type="number" id="batchWidth" value="1024" min="64" max="2048" step="64" class="form-control">
+                                </div>
+                                
+                                <div class="form-group">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                                        <label for="batchHeight">Height</label>
+                                        <label class="checkbox-label" style="font-size: 0.85rem; margin: 0;">
+                                            <input type="checkbox" id="batchHeightVariable" class="checkbox-input batch-param-variable">
+                                            <span>Use from CSV</span>
+                                        </label>
+                                    </div>
+                                    <input type="number" id="batchHeight" value="1024" min="64" max="2048" step="64" class="form-control">
+                                </div>
+                                
+                                <div class="form-group">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                                        <label for="batchSteps">Steps</label>
+                                        <label class="checkbox-label" style="font-size: 0.85rem; margin: 0;">
+                                            <input type="checkbox" id="batchStepsVariable" class="checkbox-input batch-param-variable">
+                                            <span>Use from CSV</span>
+                                        </label>
+                                    </div>
+                                    <input type="number" id="batchSteps" value="4" min="1" max="100" class="form-control">
+                                </div>
+                                
+                                <div class="form-group">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                                        <label for="batchSeed">Seed</label>
+                                        <label class="checkbox-label" style="font-size: 0.85rem; margin: 0;">
+                                            <input type="checkbox" id="batchSeedVariable" class="checkbox-input batch-param-variable">
+                                            <span>Use from CSV</span>
+                                        </label>
+                                    </div>
+                                    <input type="number" id="batchSeed" placeholder="Random" class="form-control">
+                                </div>
+                                
+                                <div class="form-group">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                                        <label for="batchFilePrefix">File Prefix</label>
+                                        <label class="checkbox-label" style="font-size: 0.85rem; margin: 0;">
+                                            <input type="checkbox" id="batchFilePrefixVariable" class="checkbox-input batch-param-variable">
+                                            <span>Use from CSV</span>
+                                        </label>
+                                    </div>
+                                    <input type="text" id="batchFilePrefix" placeholder="batch" class="form-control">
+                                </div>
+                                
+                                <div class="form-group">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                                        <label for="batchSubfolder">Output Folder</label>
+                                        <label class="checkbox-label" style="font-size: 0.85rem; margin: 0;">
+                                            <input type="checkbox" id="batchSubfolderVariable" class="checkbox-input batch-param-variable">
+                                            <span>Use from CSV</span>
+                                        </label>
+                                    </div>
+                                    <input type="text" id="batchSubfolder" placeholder="Leave empty for root" class="form-control">
+                                </div>
+                            </div>
+
+                            <button class="collapsible-header" data-target="batchLoraSettings">
+                                <span>LoRA Settings</span>
+                                <svg class="collapse-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="6 9 12 15 18 9"></polyline>
+                                </svg>
+                            </button>
+                            <div class="collapsible-content active" id="batchLoraSettings">
+                                <div class="form-group">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" id="batchMcnlLora" class="checkbox-input">
+                                            <span>MCNL LoRA</span>
+                                        </label>
+                                        <label class="checkbox-label" style="font-size: 0.85rem; margin: 0;">
+                                            <input type="checkbox" id="batchMcnlLoraVariable" class="checkbox-input batch-param-variable">
+                                            <span>Use from CSV</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" id="batchSnofsLora" class="checkbox-input">
+                                            <span>Snofs LoRA</span>
+                                        </label>
+                                        <label class="checkbox-label" style="font-size: 0.85rem; margin: 0;">
+                                            <input type="checkbox" id="batchSnofsLoraVariable" class="checkbox-input batch-param-variable">
+                                            <span>Use from CSV</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" id="batchOfaceLora" class="checkbox-input">
+                                            <span>OFace LoRA</span>
+                                        </label>
+                                        <label class="checkbox-label" style="font-size: 0.85rem; margin: 0;">
+                                            <input type="checkbox" id="batchOfaceLoraVariable" class="checkbox-input batch-param-variable">
+                                            <span>Use from CSV</span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </section>
 
@@ -483,49 +707,69 @@
             
             <!-- Current Prompt -->
             <div class="form-group" style="margin-bottom: 1.5rem;">
-                <label for="aiCurrentPrompt">Current Prompt</label>
+                <label for="aiCurrentPrompt">Starting Prompt (Editable)</label>
                 <textarea 
                     id="aiCurrentPrompt" 
                     rows="4" 
                     class="form-control"
                     placeholder="Your prompt will appear here..."
-                    readonly
-                    style="background: var(--bg-secondary); cursor: default;"
                 ></textarea>
+                <small style="color: var(--text-muted); display: block; margin-top: 0.25rem;">
+                    Edit this prompt before optimizing or applying suggestions
+                </small>
             </div>
             
             <!-- Action Buttons -->
-            <div style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem;">
-                <button class="btn btn-primary" id="aiOptimizeBtn" style="flex: 1;">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <polyline points="12 6 12 12 16 14"></polyline>
-                    </svg>
-                    Optimize Prompt
-                </button>
-                <button class="btn btn-secondary" id="aiCopyPromptBtn" title="Copy to clipboard">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                    </svg>
-                </button>
+            <div style="margin-bottom: 1.5rem;">
+                <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem;">
+                    <button class="btn btn-primary" id="aiOptimizeBtn" style="flex: 1;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <polyline points="12 6 12 12 16 14"></polyline>
+                        </svg>
+                        Optimize Prompt
+                    </button>
+                    <button class="btn btn-danger" id="aiStopBtn" style="display: none;" title="Stop generation and unload model">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="6" y="6" width="12" height="12"></rect>
+                        </svg>
+                    </button>
+                    <button class="btn btn-secondary" id="aiCopyOptimizeInstructionsBtn" title="Copy optimize instructions to clipboard">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                    </button>
+                    <button class="btn btn-secondary" id="aiCopyPromptBtn" title="Copy current prompt to clipboard">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                    </button>
+                </div>
+                <label class="checkbox-label" style="cursor: pointer; display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" id="aiUseOptimizeInstructions" class="checkbox-input" checked>
+                    <span>Use default optimize instructions</span>
+                </label>
+                <small style="color: var(--text-muted); display: block; margin-top: 0.25rem;">
+                    When unchecked, only your starting prompt will be sent to the AI
+                </small>
             </div>
             
             <!-- Suggestion Input -->
             <div class="form-group" style="margin-bottom: 1.5rem;">
-                <label for="aiSuggestion">Custom Suggestion (optional)</label>
-                <div style="display: flex; gap: 0.5rem;">
-                    <input 
-                        type="text" 
-                        id="aiSuggestion" 
-                        class="form-control" 
-                        placeholder="e.g., make it more dramatic, add sunset lighting..."
-                        style="flex: 1;"
-                    >
-                    <button class="btn btn-primary" id="aiApplySuggestionBtn">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                    <label for="aiSuggestion">Custom Suggestion (optional)</label>
+                    <button class="btn btn-primary" id="aiApplySuggestionBtn" style="padding: 0.25rem 0.75rem; font-size: 0.9rem;">
                         Apply
                     </button>
                 </div>
+                <textarea 
+                    id="aiSuggestion" 
+                    rows="3" 
+                    class="form-control" 
+                    placeholder="e.g., make it more dramatic, add sunset lighting, change the mood to mysterious..."
+                ></textarea>
                 <small style="color: var(--text-muted); display: block; margin-top: 0.25rem;">
                     Enter specific changes you want to make to the prompt
                 </small>
@@ -593,47 +837,57 @@
                 </small>
             </div>
             
-            <!-- Context Type -->
+            <!-- Context Options (Checkboxes) -->
             <div class="form-group" style="margin-bottom: 1.5rem;">
-                <label>Context to Send</label>
+                <label>Include in AI Request</label>
                 <div style="display: flex; flex-direction: column; gap: 0.5rem;">
                     <label class="checkbox-label" style="cursor: pointer;">
-                        <input type="radio" name="aiContextType" value="full" checked style="margin-right: 0.5rem;">
-                        <span>Template + Custom Context (below)</span>
+                        <input type="checkbox" id="aiParamIncludeBasePrompt" class="checkbox-input" checked>
+                        <span>Base Prompt Template</span>
                     </label>
                     <label class="checkbox-label" style="cursor: pointer;">
-                        <input type="radio" name="aiContextType" value="parameters" style="margin-right: 0.5rem;">
-                        <span>Parameters Only + Custom Context</span>
+                        <input type="checkbox" id="aiParamIncludeInstructions" class="checkbox-input" checked>
+                        <span>Default Instructions</span>
                     </label>
                     <label class="checkbox-label" style="cursor: pointer;">
-                        <input type="radio" name="aiContextType" value="custom" style="margin-right: 0.5rem;">
-                        <span>Custom Context Only</span>
+                        <input type="checkbox" id="aiParamIncludeCustom" class="checkbox-input">
+                        <span>Custom Suggestions (below)</span>
                     </label>
                 </div>
+                <small style="color: var(--text-muted); display: block; margin-top: 0.25rem;">
+                    Choose what information to send to the AI for CSV generation
+                </small>
             </div>
             
-            <!-- Custom Context -->
+            <!-- Custom Suggestions -->
             <div class="form-group" style="margin-bottom: 1.5rem;">
-                <label for="aiParamContext">Custom Context / Instructions</label>
+                <label for="aiParamContext">Custom Suggestions</label>
                 <textarea 
                     id="aiParamContext" 
                     rows="4" 
                     class="form-control"
-                    placeholder="e.g., Focus on fantasy themes, Use vibrant colors, Include various times of day..."
+                    placeholder="e.g., Focus on fantasy themes, Use vibrant colors, Include various times of day, Add different age ranges..."
                 ></textarea>
                 <small style="color: var(--text-muted); display: block; margin-top: 0.25rem;">
-                    Provide additional context or instructions for parameter generation
+                    Add specific requirements or themes for parameter generation (enabled with checkbox above)
                 </small>
             </div>
             
             <!-- Generate Button -->
-            <button class="btn btn-primary btn-large" id="aiGenerateParamsBtn" style="width: 100%; margin-bottom: 1rem;">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <polyline points="12 6 12 12 16 14"></polyline>
-                </svg>
-                Generate Parameters
-            </button>
+            <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+                <button class="btn btn-primary btn-large" id="aiGenerateParamsBtn" style="flex: 1;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                    Generate Parameters
+                </button>
+                <button class="btn btn-danger" id="aiParamStopBtn" style="display: none;" title="Stop generation and unload model">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="6" y="6" width="12" height="12"></rect>
+                    </svg>
+                </button>
+            </div>
             
             <!-- Result Area -->
             <div class="form-group" style="margin-bottom: 1.5rem;">
@@ -658,6 +912,110 @@
             <div class="custom-modal-actions">
                 <button class="btn btn-secondary" id="aiParamModalCancelBtn">Cancel</button>
                 <button class="btn btn-primary" id="aiParamModalUseBtn">Use This Data</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Per-Parameter Value Editor Modal -->
+    <div class="custom-modal" id="parameterEditModal" style="display: none;">
+        <div class="custom-modal-overlay"></div>
+        <div class="custom-modal-content" style="max-width: 700px; max-height: 90vh; overflow-y: auto;">
+            <h3>🎯 Edit Parameter Values</h3>
+            
+            <!-- Parameter Selection -->
+            <div class="form-group" style="margin-bottom: 1.5rem;">
+                <label for="editParamSelect">Select Parameters to Edit</label>
+                <select id="editParamSelect" class="form-control" multiple size="8">
+                    <option value="">-- No parameters available --</option>
+                </select>
+                <small style="color: var(--text-muted); display: block; margin-top: 0.25rem;">
+                    Select one or more parameters to generate values for. Hold Ctrl/Cmd to select multiple.
+                </small>
+            </div>
+            
+            <!-- Model Selection -->
+            <div class="form-group" style="margin-bottom: 1.5rem;">
+                <label for="editParamProvider">AI Provider</label>
+                <select id="editParamProvider" class="form-control" style="margin-bottom: 0.5rem;">
+                    <option value="ollama">Ollama (Local)</option>
+                    <option value="gemini">Google Gemini</option>
+                </select>
+                
+                <label for="editParamModel">Model</label>
+                <select id="editParamModel" class="form-control">
+                    <option value="">Loading models...</option>
+                </select>
+            </div>
+            
+            <!-- Count -->
+            <div class="form-group" style="margin-bottom: 1.5rem;">
+                <label for="editParamCount">Number of Values</label>
+                <input 
+                    type="number" 
+                    id="editParamCount" 
+                    value="5" 
+                    min="1" 
+                    max="50"
+                    class="form-control"
+                >
+                <small style="color: var(--text-muted); display: block; margin-top: 0.25rem;">
+                    Generate 1-50 values for the selected parameter
+                </small>
+            </div>
+            
+            <!-- Custom Instructions -->
+            <div class="form-group" style="margin-bottom: 1.5rem;">
+                <label for="editParamInstructions">Instructions for AI</label>
+                <textarea 
+                    id="editParamInstructions" 
+                    rows="4" 
+                    class="form-control"
+                    placeholder="e.g., Generate fantasy character names, Use vibrant color names, Create descriptive locations..."
+                ></textarea>
+                <small style="color: var(--text-muted); display: block; margin-top: 0.25rem;">
+                    Provide specific guidance for what kind of values to generate
+                </small>
+            </div>
+            
+            <!-- Generate Button -->
+            <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+                <button class="btn btn-primary btn-large" id="editParamGenerateBtn" style="flex: 1;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                    Generate Values
+                </button>
+                <button class="btn btn-danger" id="editParamStopBtn" style="display: none;" title="Stop generation and unload model">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="6" y="6" width="12" height="12"></rect>
+                    </svg>
+                </button>
+            </div>
+            
+            <!-- Result Area -->
+            <div class="form-group" style="margin-bottom: 1.5rem;">
+                <label for="editParamResult">Generated Values</label>
+                <textarea 
+                    id="editParamResult" 
+                    rows="10" 
+                    class="form-control"
+                    placeholder="Generated values will appear here (one per line)..."
+                    style="font-family: monospace; font-size: 0.9rem;"
+                ></textarea>
+                <div id="editParamLoadingIndicator" style="display: none; margin-top: 0.5rem; color: var(--primary);">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 1s linear infinite; display: inline-block;">
+                        <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
+                        <path d="M12 2 A10 10 0 0 1 22 12" stroke-opacity="0.75"></path>
+                    </svg>
+                    <span style="margin-left: 0.5rem;">AI is generating values...</span>
+                </div>
+            </div>
+            
+            <!-- Modal Actions -->
+            <div class="custom-modal-actions">
+                <button class="btn btn-secondary" id="editParamModalCancelBtn">Cancel</button>
+                <button class="btn btn-primary" id="editParamModalApplyBtn">Apply to CSV</button>
             </div>
         </div>
     </div>
