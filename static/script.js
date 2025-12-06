@@ -1013,9 +1013,11 @@ async function handleBatchImageUpload() {
 // Image Browser Functions
 let imageBrowserMode = 'single'; // 'single' or 'batch'
 let currentBrowserFolder = 'input'; // 'input' or 'output'
+let currentBrowserSubpath = ''; // Current subfolder path
 
 function openImageBrowser(mode) {
     imageBrowserMode = mode;
+    currentBrowserSubpath = ''; // Reset to root
     const modal = document.getElementById('imageBrowserModal');
     modal.style.display = 'flex';
     
@@ -1030,6 +1032,7 @@ function closeImageBrowser() {
 
 async function loadImageBrowserFolder(folder, subpath) {
     currentBrowserFolder = folder;
+    currentBrowserSubpath = subpath || '';
     
     // Update tab active state
     document.querySelectorAll('.image-browser-tab').forEach(tab => {
@@ -1039,40 +1042,76 @@ async function loadImageBrowserFolder(folder, subpath) {
         }
     });
     
-    // Update path display
-    const pathDisplay = document.getElementById('imageBrowserPathText');
-    const folderName = folder === 'input' ? 'Input' : 'Output';
-    if (pathDisplay) {
-        pathDisplay.textContent = subpath ? `${folderName} / ${subpath}` : folderName;
-    }
+    // Update path display with breadcrumb
+    renderImageBrowserPath(folder, subpath);
     
     try {
         // Fetch images from appropriate folder
         const endpoint = folder === 'input' 
-            ? '/api/browse_images?folder=input'
+            ? `/api/browse_images?folder=input&path=${encodeURIComponent(subpath)}`
             : `/api/browse?path=${encodeURIComponent(subpath)}`;
         
         const response = await fetch(endpoint);
         const data = await response.json();
         
-        // Render images
+        // Render folders and images
         const grid = document.getElementById('imageBrowserGrid');
         grid.innerHTML = '';
         
-        const files = folder === 'input' ? data.images : data.files;
+        const folders = data.folders || [];
+        const files = folder === 'input' ? (data.images || []) : (data.files || []);
         
-        if (!files || files.length === 0) {
-            grid.innerHTML = '<p style="color: #888; grid-column: 1/-1; text-align: center;">No images found</p>';
+        if (folders.length === 0 && files.length === 0) {
+            grid.innerHTML = '<p style="color: #888; grid-column: 1/-1; text-align: center;">No images or folders found</p>';
             return;
         }
         
+        // Add back button if not at root
+        if (subpath) {
+            const parentPath = subpath.split(/[/\\]/).slice(0, -1).join('/');
+            const backDiv = document.createElement('div');
+            backDiv.className = 'browser-folder-item';
+            backDiv.innerHTML = `
+                <div class="browser-folder-icon">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="15 18 9 12 15 6"></polyline>
+                    </svg>
+                </div>
+                <div class="browser-folder-name">..</div>
+            `;
+            backDiv.addEventListener('click', () => {
+                loadImageBrowserFolder(folder, parentPath);
+            });
+            grid.appendChild(backDiv);
+        }
+        
+        // Render folders
+        folders.forEach(folderItem => {
+            const div = document.createElement('div');
+            div.className = 'browser-folder-item';
+            div.innerHTML = `
+                <div class="browser-folder-icon">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                </div>
+                <div class="browser-folder-name">${escapeHtml(folderItem.name)}</div>
+            `;
+            div.addEventListener('click', () => {
+                loadImageBrowserFolder(folder, folderItem.path);
+            });
+            grid.appendChild(div);
+        });
+        
+        // Render images
         files.forEach(file => {
-            // Handle both string filenames (input) and objects (output)
+            // Handle both object format (with path) and simple string format
             const filename = typeof file === 'string' ? file : (file.filename || file);
+            const filePath = typeof file === 'string' ? file : (file.path || file.filename);
             const relativePath = typeof file === 'string' ? null : (file.relative_path || file.filename);
             
             const imagePath = folder === 'input' 
-                ? `/api/image/input/${encodeURIComponent(filename)}`
+                ? `/api/image/input/${encodeURIComponent(filePath)}`
                 : `/outputs/${relativePath || filename}`;
             
             const div = document.createElement('div');
@@ -1096,7 +1135,7 @@ async function loadImageBrowserFolder(folder, subpath) {
             div.appendChild(nameDiv);
             
             div.addEventListener('click', () => {
-                selectBrowsedImage(filename, folder, imagePath);
+                selectBrowsedImage(filePath, folder, imagePath);
             });
             
             grid.appendChild(div);
@@ -1105,6 +1144,30 @@ async function loadImageBrowserFolder(folder, subpath) {
         console.error('Error loading browser folder:', error);
         showNotification('Error loading images', 'Error', 'error');
     }
+}
+
+function renderImageBrowserPath(folder, subpath) {
+    const pathDisplay = document.getElementById('imageBrowserPathText');
+    const folderName = folder === 'input' ? 'Input' : 'Output';
+    
+    if (!subpath) {
+        pathDisplay.innerHTML = folderName;
+        return;
+    }
+    
+    // Build clickable breadcrumb path
+    const parts = subpath.split(/[/\\]/).filter(p => p);
+    let html = `<span class="browser-path-part" style="cursor: pointer;" onclick="loadImageBrowserFolder('${folder}', '')">${folderName}</span>`;
+    
+    let currentPath = '';
+    parts.forEach((part, index) => {
+        currentPath += (currentPath ? '/' : '') + part;
+        const pathCopy = currentPath;
+        html += ' / ';
+        html += `<span class="browser-path-part" style="cursor: pointer;" onclick="loadImageBrowserFolder('${folder}', '${pathCopy}')">${escapeHtml(part)}</span>`;
+    });
+    
+    pathDisplay.innerHTML = html;
 }
 
 async function selectBrowsedImage(filename, folder, imagePath) {

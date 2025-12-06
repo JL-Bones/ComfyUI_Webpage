@@ -584,29 +584,60 @@ def upload_image():
 
 @app.route('/api/browse_images', methods=['GET'])
 def browse_images():
-    """Browse images from input or output folders"""
+    """Browse images from input or output folders with subfolder support"""
     folder = request.args.get('folder', 'input')  # 'input' or 'output'
+    subpath = request.args.get('path', '')  # Subfolder path
     
     try:
         if folder == 'input':
-            # List images from ComfyUI input directory
+            # List images and folders from ComfyUI input directory
             comfyui_input_dir = Path('..') / 'comfy.git' / 'app' / 'input'
             
             if not comfyui_input_dir.exists():
                 return jsonify({'success': False, 'error': 'Input directory not found'}), 404
             
+            # Navigate to subfolder if specified
+            current_dir = comfyui_input_dir / subpath if subpath else comfyui_input_dir
+            
+            if not current_dir.exists() or not current_dir.is_dir():
+                return jsonify({'success': False, 'error': 'Invalid directory'}), 404
+            
+            # Get folders
+            folders = []
+            for item in current_dir.iterdir():
+                if item.is_dir():
+                    rel_path = str(item.relative_to(comfyui_input_dir))
+                    folders.append({
+                        'name': item.name,
+                        'path': rel_path,
+                        'type': 'folder'
+                    })
+            
             # Get all image files
             allowed_extensions = {'.png', '.jpg', '.jpeg', '.webp', '.bmp'}
             images = []
             
-            for file in comfyui_input_dir.iterdir():
+            for file in current_dir.iterdir():
                 if file.is_file() and file.suffix.lower() in allowed_extensions:
-                    images.append(file.name)
+                    # Store relative path from input root
+                    rel_path = str(file.relative_to(comfyui_input_dir))
+                    images.append({
+                        'filename': file.name,
+                        'path': rel_path,
+                        'mtime': file.stat().st_mtime
+                    })
             
-            # Sort by modification time (newest first)
-            images.sort(key=lambda x: (comfyui_input_dir / x).stat().st_mtime, reverse=True)
+            # Sort folders by name, images by modification time (newest first)
+            folders.sort(key=lambda x: x['name'])
+            images.sort(key=lambda x: x['mtime'], reverse=True)
             
-            return jsonify({'success': True, 'images': images, 'folder': 'input'})
+            return jsonify({
+                'success': True, 
+                'images': images, 
+                'folders': folders,
+                'current_path': subpath,
+                'folder': 'input'
+            })
         else:
             # For output folder, use existing browse endpoint functionality
             return jsonify({'success': False, 'error': 'Use /api/browse for output folder'}), 400
@@ -614,27 +645,38 @@ def browse_images():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/image/input/<filename>')
-def serve_input_image(filename):
-    """Serve images from ComfyUI input directory"""
+@app.route('/api/image/input/<path:filepath>')
+def serve_input_image(filepath):
+    """Serve images from ComfyUI input directory (supports subfolders)"""
     try:
         comfyui_input_dir = Path('..') / 'comfy.git' / 'app' / 'input'
-        # Resolve to absolute path for send_from_directory
+        # Resolve to absolute path
         absolute_dir = comfyui_input_dir.resolve()
-        file_path = absolute_dir / filename
+        file_path = absolute_dir / filepath
+        
+        # Security check: ensure the file is within the input directory
+        try:
+            file_path.resolve().relative_to(absolute_dir)
+        except ValueError:
+            print(f"Security error: attempted to access file outside input directory: {filepath}")
+            return jsonify({'error': 'Invalid file path'}), 403
         
         # Debug logging
-        print(f"Serving input image: {filename}")
+        print(f"Serving input image: {filepath}")
         print(f"From directory: {absolute_dir}")
         print(f"File exists: {file_path.exists()}")
         
         if not file_path.exists():
             print(f"File not found: {file_path}")
             return jsonify({'error': 'File not found'}), 404
-            
-        return send_from_directory(str(absolute_dir), filename)
+        
+        # Get the directory and filename separately for send_from_directory
+        file_dir = file_path.parent
+        file_name = file_path.name
+        
+        return send_from_directory(str(file_dir), file_name)
     except Exception as e:
-        print(f"Error serving input image {filename}: {e}")
+        print(f"Error serving input image {filepath}: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 404

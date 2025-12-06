@@ -113,7 +113,7 @@
   },
   "43": {
     "inputs": {
-      "image": "Gwen_Tennyson.webp"
+      "image": "permanent\\violet.webp"
     },
     "class_type": "LoadImage",
     "_meta": {
