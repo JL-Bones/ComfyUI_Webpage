@@ -90,6 +90,50 @@
                 <!-- Single Generation Tab -->
                 <section class="tab-content active" id="singleTab">
                     <div class="generation-panel">
+                        <!-- Image Upload Section -->
+                        <div class="form-group">
+                            <label for="imageUpload">Upload Image (Optional - for Image-to-Image)</label>
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <input 
+                                    type="file" 
+                                    id="imageUpload" 
+                                    accept="image/png,image/jpeg,image/jpg,image/webp,image/bmp"
+                                    class="form-control"
+                                    style="flex: 1;"
+                                >
+                                <button type="button" class="btn btn-sm" id="browseImageBtn" title="Browse Existing Images">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                                        <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                                        <polyline points="21 15 16 10 5 21"></polyline>
+                                    </svg>
+                                    Browse
+                                </button>
+                                <button type="button" class="btn btn-sm btn-danger" id="clearImageBtn" style="display: none;">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                                    </svg>
+                                    Clear
+                                </button>
+                            </div>
+                            <div id="imagePreview" style="margin-top: 0.5rem; display: none;">
+                                <img id="imagePreviewImg" style="max-width: 200px; max-height: 200px; border-radius: 4px; border: 1px solid var(--border);">
+                            </div>
+                        </div>
+
+                        <!-- Use Image Size Option (only shown when image is uploaded) -->
+                        <div class="form-group" id="useImageSizeGroup" style="display: none;">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="useImageSize" class="checkbox-input">
+                                <span>Use Uploaded Image Size</span>
+                            </label>
+                            <small style="color: var(--text-muted); display: block; margin-top: 0.25rem;">
+                                When enabled, width and height will match the uploaded image
+                            </small>
+                        </div>
+
+                        <!-- Prompt -->
                         <div class="form-group">
                             <label for="prompt">Prompt</label>
                             <div class="prompt-container">
@@ -115,100 +159,142 @@
                             </button>
                         </div>
 
+                        <!-- Basic Parameters -->
                         <button class="collapsible-header" data-target="singleParameters">
-                            <span>Parameters</span>
+                            <span>Basic Parameters</span>
                             <svg class="collapse-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <polyline points="6 9 12 15 18 9"></polyline>
                             </svg>
                         </button>
                         <div class="collapsible-content active" id="singleParameters">
-                        <div class="parameters-grid">
-                        <div class="form-group">
-                            <label for="width">Width</label>
-                            <input 
-                                type="number" 
-                                id="width" 
-                                value="1024" 
-                                min="64" 
-                                max="2048" 
-                                step="64"
-                                class="form-control"
-                            >
-                        </div>
+                            <div class="parameters-grid">
+                                <div class="form-group" id="widthGroup">
+                                    <label for="width">Width</label>
+                                    <input 
+                                        type="number" 
+                                        id="width" 
+                                        value="512" 
+                                        min="64" 
+                                        max="2048" 
+                                        step="64"
+                                        class="form-control"
+                                    >
+                                </div>
 
-                        <div class="form-group">
-                            <label for="height">Height</label>
-                            <input 
-                                type="number" 
-                                id="height" 
-                                value="1024" 
-                                min="64" 
-                                max="2048" 
-                                step="64"
-                                class="form-control"
-                            >
-                        </div>
+                                <div class="form-group" id="heightGroup">
+                                    <label for="height">Height</label>
+                                    <input 
+                                        type="number" 
+                                        id="height" 
+                                        value="1024" 
+                                        min="64" 
+                                        max="2048" 
+                                        step="64"
+                                        class="form-control"
+                                    >
+                                </div>
 
-                        <div class="form-group">
-                            <label for="steps">Steps</label>
-                            <input 
-                                type="number" 
-                                id="steps" 
-                                value="4" 
-                                min="1" 
-                                max="100"
-                                class="form-control"
-                            >
-                        </div>                        <div class="form-group">
-                            <label for="seed">Seed (optional)</label>
-                            <div class="input-with-clear">
-                                <input 
-                                    type="number" 
-                                    id="seed" 
-                                    placeholder="Random"
-                                    class="form-control"
-                                >
-                                <button type="button" class="clear-btn" id="clearSeedBtn" title="Clear seed">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                                    </svg>
-                                </button>
+                                <div class="form-group">
+                                    <label for="filePrefix">File Prefix (optional)</label>
+                                    <input 
+                                        type="text" 
+                                        id="filePrefix" 
+                                        placeholder="comfyui"
+                                        class="form-control"
+                                    >
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="subfolder">Output Folder (optional)</label>
+                                    <input 
+                                        type="text" 
+                                        id="subfolder" 
+                                        placeholder="Leave empty for root"
+                                        class="form-control"
+                                    >
+                                </div>
                             </div>
                         </div>
 
-                        <div class="form-group">
-                            <label for="filePrefix">File Prefix (optional)</label>
-                            <input 
-                                type="text" 
-                                id="filePrefix" 
-                                placeholder="comfyui"
-                                class="form-control"
-                            >
+                        <!-- Advanced Parameters -->
+                        <button class="collapsible-header" data-target="advancedSettings">
+                            <span>Advanced Settings</span>
+                            <svg class="collapse-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                        </button>
+                        <div class="collapsible-content" id="advancedSettings">
+                            <div class="parameters-grid">
+                                <div class="form-group">
+                                    <label for="steps">Steps</label>
+                                    <input 
+                                        type="number" 
+                                        id="steps" 
+                                        value="4" 
+                                        min="1" 
+                                        max="100"
+                                        class="form-control"
+                                    >
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="cfg">CFG Scale</label>
+                                    <input 
+                                        type="number" 
+                                        id="cfg" 
+                                        value="1.0" 
+                                        min="0.1" 
+                                        max="20.0"
+                                        step="0.1"
+                                        class="form-control"
+                                    >
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="shift">Shift</label>
+                                    <input 
+                                        type="number" 
+                                        id="shift" 
+                                        value="3.0" 
+                                        min="0.0" 
+                                        max="10.0"
+                                        step="0.1"
+                                        class="form-control"
+                                    >
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="seed">Seed (optional)</label>
+                                    <div class="input-with-clear">
+                                        <input 
+                                            type="number" 
+                                            id="seed" 
+                                            placeholder="Random"
+                                            class="form-control"
+                                        >
+                                        <button type="button" class="clear-btn" id="clearSeedBtn" title="Clear seed">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
-                        <div class="form-group">
-                            <label for="subfolder">Output Folder (optional)</label>
-                            <input 
-                                type="text" 
-                                id="subfolder" 
-                                placeholder="Leave empty for root"
-                                class="form-control"
-                            >
-                        </div>
-                        </div>
-
+                        <!-- LoRA Settings -->
                         <button class="collapsible-header" data-target="loraSettings">
                             <span>LoRA Settings</span>
                             <svg class="collapse-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <polyline points="6 9 12 15 18 9"></polyline>
                             </svg>
                         </button>
-                        <div class="collapsible-content active" id="loraSettings">
+                        <div class="collapsible-content" id="loraSettings">
                             <div class="form-group">
                                 <label class="checkbox-label">
                                     <input type="checkbox" id="mcnlLora" class="checkbox-input">
-                                    <span>MCNL LoRA</span>
+                                    <span>MCNL LoRA (Female)</span>
                                 </label>
                                 <div class="keyword-list">
                                     <small>Keywords: cum_on_face, nsfw, blowjob, cowgirlout, creamp1e, penis</small>
@@ -218,14 +304,20 @@
                             <div class="form-group">
                                 <label class="checkbox-label">
                                     <input type="checkbox" id="snofsLora" class="checkbox-input">
-                                    <span>Snofs LoRA</span>
+                                    <span>Snofs LoRA (Female)</span>
                                 </label>
                                 <div class="keyword-list">
                                     <small>Keywords: anus, blowjob, deepthroat, braless, cowgirl position, cum, cunnilingus, dildo, doggystyle position, fingering, hand in panties, handjob, implied blowjob, ipcam, masturbating, massage, missionary position, naked, nude, penis, prone position, reverse cowgirl position, sex, sheer, snapchat, selfie, mirror selfie, spooning position, strap-on dildo, tentacles, licking testicles, undressing, vagina</small>
                                 </div>
                             </div>
+
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="maleLora" class="checkbox-input">
+                                    <span>Male LoRA</span>
+                                </label>
+                            </div>
                         </div>
-                    </div>
                     </div>
                 </section>
 
@@ -237,6 +329,49 @@
                             <p style="color: var(--text-muted); margin: 0; font-size: 0.95rem;">
                                 Generate multiple images using a base prompt with parameters. Use [parameter] placeholders in your prompt and provide values via CSV.
                             </p>
+                        </div>
+
+                        <!-- Image Upload Section -->
+                        <div class="form-group">
+                            <label for="batchImageUpload">Upload Image (Optional - for Image-to-Image)</label>
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <input 
+                                    type="file" 
+                                    id="batchImageUpload" 
+                                    accept="image/png,image/jpeg,image/jpg,image/webp,image/bmp"
+                                    class="form-control"
+                                    style="flex: 1;"
+                                >
+                                <button type="button" class="btn btn-sm" id="browseBatchImageBtn" title="Browse Existing Images">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                                        <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                                        <polyline points="21 15 16 10 5 21"></polyline>
+                                    </svg>
+                                    Browse
+                                </button>
+                                <button type="button" class="btn btn-sm btn-danger" id="clearBatchImageBtn" style="display: none;">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                                    </svg>
+                                    Clear
+                                </button>
+                            </div>
+                            <div id="batchImagePreview" style="margin-top: 0.5rem; display: none;">
+                                <img id="batchImagePreviewImg" style="max-width: 200px; max-height: 200px; border-radius: 4px; border: 1px solid var(--border);">
+                            </div>
+                        </div>
+
+                        <!-- Use Image Size Option (only shown when image is uploaded) -->
+                        <div class="form-group" id="batchUseImageSizeGroup" style="display: none;">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="batchUseImageSize" class="checkbox-input">
+                                <span>Use Uploaded Image Size</span>
+                            </label>
+                            <small style="color: var(--text-muted); display: block; margin-top: 0.25rem;">
+                                When enabled, width and height will match the uploaded image (ignores CSV width/height)
+                            </small>
                         </div>
 
                         <!-- Base Prompt -->
@@ -367,6 +502,28 @@
                                     </div>
                                     <input type="number" id="batchSteps" value="4" min="1" max="100" class="form-control">
                                 </div>
+
+                                <div class="form-group">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                                        <label for="batchCfg">CFG Scale</label>
+                                        <label class="checkbox-label" style="font-size: 0.85rem; margin: 0;">
+                                            <input type="checkbox" id="batchCfgVariable" class="checkbox-input batch-param-variable">
+                                            <span>Use from CSV</span>
+                                        </label>
+                                    </div>
+                                    <input type="number" id="batchCfg" value="1.0" min="0.1" max="20.0" step="0.1" class="form-control">
+                                </div>
+
+                                <div class="form-group">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                                        <label for="batchShift">Shift</label>
+                                        <label class="checkbox-label" style="font-size: 0.85rem; margin: 0;">
+                                            <input type="checkbox" id="batchShiftVariable" class="checkbox-input batch-param-variable">
+                                            <span>Use from CSV</span>
+                                        </label>
+                                    </div>
+                                    <input type="number" id="batchShift" value="3.0" min="0.0" max="10.0" step="0.1" class="form-control">
+                                </div>
                                 
                                 <div class="form-group">
                                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
@@ -413,7 +570,7 @@
                                     <div style="display: flex; justify-content: space-between; align-items: center;">
                                         <label class="checkbox-label">
                                             <input type="checkbox" id="batchMcnlLora" class="checkbox-input">
-                                            <span>MCNL LoRA</span>
+                                            <span>MCNL LoRA (Female)</span>
                                         </label>
                                         <label class="checkbox-label" style="font-size: 0.85rem; margin: 0;">
                                             <input type="checkbox" id="batchMcnlLoraVariable" class="checkbox-input batch-param-variable">
@@ -426,10 +583,23 @@
                                     <div style="display: flex; justify-content: space-between; align-items: center;">
                                         <label class="checkbox-label">
                                             <input type="checkbox" id="batchSnofsLora" class="checkbox-input">
-                                            <span>Snofs LoRA</span>
+                                            <span>Snofs LoRA (Female)</span>
                                         </label>
                                         <label class="checkbox-label" style="font-size: 0.85rem; margin: 0;">
                                             <input type="checkbox" id="batchSnofsLoraVariable" class="checkbox-input batch-param-variable">
+                                            <span>Use from CSV</span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" id="batchMaleLora" class="checkbox-input">
+                                            <span>Male LoRA</span>
+                                        </label>
+                                        <label class="checkbox-label" style="font-size: 0.85rem; margin: 0;">
+                                            <input type="checkbox" id="batchMaleLoraVariable" class="checkbox-input batch-param-variable">
                                             <span>Use from CSV</span>
                                         </label>
                                     </div>
@@ -993,6 +1163,40 @@
             <div class="custom-modal-actions">
                 <button class="btn btn-secondary" id="editParamModalCancelBtn">Cancel</button>
                 <button class="btn btn-primary" id="editParamModalApplyBtn">Apply to CSV</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Image Browser Modal -->
+    <div class="custom-modal" id="imageBrowserModal" style="display: none;">
+        <div class="custom-modal-overlay"></div>
+        <div class="custom-modal-content" style="max-width: 900px; max-height: 80vh; overflow: hidden; display: flex; flex-direction: column;">
+            <h3>Browse Images</h3>
+            
+            <!-- Folder Tabs -->
+            <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem; border-bottom: 2px solid var(--border); padding-bottom: 0.5rem;">
+                <button class="btn btn-sm image-browser-tab active" data-folder="input">Input Folder</button>
+                <button class="btn btn-sm image-browser-tab" data-folder="output">Output Folder</button>
+            </div>
+            
+            <!-- Current Path -->
+            <div id="imageBrowserPath" style="margin-bottom: 1rem; color: var(--text-muted); font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                </svg>
+                <span id="imageBrowserPathText">Loading...</span>
+            </div>
+            
+            <!-- Image Grid -->
+            <div id="imageBrowserGrid" style="flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 1rem; padding: 1rem; background: var(--bg-secondary); border-radius: 4px;">
+                <div style="grid-column: 1 / -1; text-align: center; color: var(--text-muted); padding: 2rem;">
+                    Loading images...
+                </div>
+            </div>
+            
+            <!-- Modal Actions -->
+            <div class="custom-modal-actions" style="margin-top: 1rem;">
+                <button class="btn btn-secondary" id="closeBrowserBtn">Cancel</button>
             </div>
         </div>
     </div>

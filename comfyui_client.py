@@ -24,7 +24,7 @@ class ComfyUIClient:
         self.server_address = server_address
         self.client_id = str(uuid.uuid4())
         
-    def load_workflow(self, workflow_path: str = "workflows/Imaginer.json") -> Dict[str, Any]:
+    def load_workflow(self, workflow_path: str = "workflows/Qwen_Full.json") -> Dict[str, Any]:
         """Load workflow from JSON file"""
         with open(workflow_path, 'r') as f:
             return json.load(f)
@@ -130,11 +130,16 @@ class ComfyUIClient:
         steps: Optional[int] = None,
         cfg: Optional[float] = None,
         seed: Optional[int] = None,
+        shift: Optional[float] = None,
+        use_image: bool = False,
+        use_image_size: bool = False,
+        image_filename: Optional[str] = None,
         mcnl_lora: bool = False,
-        snofs_lora: bool = False
+        snofs_lora: bool = False,
+        male_lora: bool = False
     ) -> Dict[str, Any]:
         """
-        Modify workflow parameters
+        Modify workflow parameters for Qwen_Full.json workflow
         
         Args:
             workflow: The workflow dictionary
@@ -144,8 +149,13 @@ class ComfyUIClient:
             steps: Number of sampling steps
             cfg: CFG scale
             seed: Random seed (None for random)
+            shift: Shift parameter for ModelSamplingAuraFlow
+            use_image: Whether to use image-to-image mode
+            use_image_size: Whether to use the uploaded image's size
+            image_filename: Name of uploaded image file
             mcnl_lora: Enable MCNL LoRA
             snofs_lora: Enable Snofs LoRA
+            male_lora: Enable Male LoRA
             
         Returns:
             Modified workflow
@@ -153,30 +163,43 @@ class ComfyUIClient:
         # Create a copy to avoid modifying the original
         modified = json.loads(json.dumps(workflow))
         
-        # Update positive prompt
+        # Update positive prompt (node 45)
         if positive_prompt:
-            modified["75:6"]["inputs"]["text"] = positive_prompt
+            modified["45"]["inputs"]["value"] = positive_prompt
         
-        # Update dimensions
+        # Update dimensions (nodes 32=width, 31=height)
         if width is not None:
-            modified["75:58"]["inputs"]["width"] = width
+            modified["32"]["inputs"]["value"] = width
         if height is not None:
-            modified["75:58"]["inputs"]["height"] = height
+            modified["31"]["inputs"]["value"] = height
         
         # Update sampling parameters
         if steps is not None:
-            modified["75:3"]["inputs"]["steps"] = steps
+            modified["36"]["inputs"]["value"] = steps
         if cfg is not None:
-            modified["75:3"]["inputs"]["cfg"] = cfg
+            modified["39"]["inputs"]["value"] = cfg
+        if shift is not None:
+            modified["40"]["inputs"]["value"] = shift
         if seed is not None:
-            modified["75:3"]["inputs"]["seed"] = seed
+            modified["35"]["inputs"]["value"] = seed
         elif seed is None:
             # Generate random seed
-            modified["75:3"]["inputs"]["seed"] = random.randint(0, 2**32 - 1)
+            modified["35"]["inputs"]["value"] = random.randint(0, 2**32 - 1)
         
-        # Update LoRA booleans
-        modified["75:115:115"]["inputs"]["value"] = mcnl_lora
-        modified["75:115:130"]["inputs"]["value"] = snofs_lora
+        # Update use_image (node 38)
+        modified["38"]["inputs"]["value"] = use_image
+        
+        # Update use_image_size (node 34)
+        modified["34"]["inputs"]["value"] = use_image_size
+        
+        # Update image filename if provided (node 43)
+        if image_filename:
+            modified["43"]["inputs"]["image"] = image_filename
+        
+        # Update LoRA booleans (nodes 41=MCNL, 42=Snofs, 33=Male)
+        modified["41"]["inputs"]["value"] = mcnl_lora
+        modified["42"]["inputs"]["value"] = snofs_lora
+        modified["33"]["inputs"]["value"] = male_lora
         
         return modified
     
@@ -188,8 +211,13 @@ class ComfyUIClient:
         steps: int = 4,
         cfg: float = 1.0,
         seed: Optional[int] = None,
+        shift: float = 3.0,
+        use_image: bool = False,
+        use_image_size: bool = False,
+        image_filename: Optional[str] = None,
         mcnl_lora: bool = False,
         snofs_lora: bool = False,
+        male_lora: bool = False,
         output_path: Optional[str] = None,
         wait: bool = True
     ) -> Optional[str]:
@@ -203,8 +231,13 @@ class ComfyUIClient:
             steps: Number of sampling steps
             cfg: CFG scale
             seed: Random seed (None for random)
+            shift: Shift parameter for ModelSamplingAuraFlow
+            use_image: Whether to use image-to-image mode
+            use_image_size: Whether to use the uploaded image's size
+            image_filename: Name of uploaded image file
             mcnl_lora: Enable MCNL LoRA
             snofs_lora: Enable Snofs LoRA
+            male_lora: Enable Male LoRA
             output_path: Path to save the image (None to not save)
             wait: Whether to wait for completion
             
@@ -221,8 +254,13 @@ class ComfyUIClient:
             steps=steps,
             cfg=cfg,
             seed=seed,
+            shift=shift,
+            use_image=use_image,
+            use_image_size=use_image_size,
+            image_filename=image_filename,
             mcnl_lora=mcnl_lora,
-            snofs_lora=snofs_lora
+            snofs_lora=snofs_lora,
+            male_lora=male_lora
         )
         
         # Queue the prompt

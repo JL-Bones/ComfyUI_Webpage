@@ -2,7 +2,7 @@
 Flask Web UI for ComfyUI Workflow
 """
 
-from flask import Flask, render_template, request, jsonify, send_file, Response, stream_with_context
+from flask import Flask, render_template, request, jsonify, send_file, send_from_directory, Response, stream_with_context
 from comfyui_client import ComfyUIClient
 from ai_assistant import AIAssistant
 import os
@@ -31,6 +31,7 @@ active_generation = None
 last_queue_empty_time = None  # Track when queue became empty
 timer_stopped = False  # Flag to prevent timer restart after unload
 UNLOAD_DELAY_SECONDS = 300  # Wait 300 seconds (5 minutes) after queue empty before unloading
+previous_use_image_mode = None  # Track previous job's use_image state to detect mode changes
 
 # Initialize ComfyUI client and AI assistant
 comfyui_client = ComfyUIClient(server_address="127.0.0.1:8188")
@@ -130,7 +131,7 @@ def save_queue_state():
         print(f"Error saving queue state: {e}")
 
 
-def add_metadata_entry(image_path, prompt, width, height, steps, seed, file_prefix, subfolder, mcnl_lora=False, snofs_lora=False):
+def add_metadata_entry(image_path, prompt, width, height, steps, seed, file_prefix, subfolder, cfg=1.0, shift=3.0, use_image=False, use_image_size=False, image_filename=None, mcnl_lora=False, snofs_lora=False, male_lora=False):
     """Add a new metadata entry"""
     metadata = load_metadata()
     entry = {
@@ -143,10 +144,16 @@ def add_metadata_entry(image_path, prompt, width, height, steps, seed, file_pref
         "width": width,
         "height": height,
         "steps": steps,
+        "cfg": cfg,
+        "shift": shift,
         "seed": seed,
+        "use_image": use_image,
+        "use_image_size": use_image_size,
+        "image_filename": image_filename,
         "file_prefix": file_prefix,
         "mcnl_lora": mcnl_lora,
-        "snofs_lora": snofs_lora
+        "snofs_lora": snofs_lora,
+        "male_lora": male_lora
     }
     metadata.append(entry)
     save_metadata(metadata)
@@ -170,6 +177,23 @@ def process_queue():
         
         if job:
             try:
+                # Check if we're switching between text-to-image and image-to-image
+                global previous_use_image_mode
+                current_use_image = job.get('use_image', False)
+                
+                if previous_use_image_mode is not None and previous_use_image_mode != current_use_image:
+                    mode_change = "image-to-image to text-to-image" if previous_use_image_mode else "text-to-image to image-to-image"
+                    print(f"Mode change detected ({mode_change}). Unloading models...")
+                    try:
+                        comfyui_client.unload_models()
+                        comfyui_client.clear_cache()
+                        print("✓ Models unloaded and memory cleared before mode switch")
+                    except Exception as e:
+                        print(f"Warning: Error unloading models during mode switch: {e}")
+                
+                # Update previous mode for next comparison
+                previous_use_image_mode = current_use_image
+                
                 # Generate image with auto-incrementing filename
                 file_prefix = job.get('file_prefix', 'comfyui')
                 subfolder = job.get('subfolder', '')
@@ -186,10 +210,15 @@ def process_queue():
                     width=job['width'],
                     height=job['height'],
                     steps=job['steps'],
-                    cfg=1.0,
+                    cfg=job.get('cfg', 1.0),
                     seed=seed,
+                    shift=job.get('shift', 3.0),
+                    use_image=job.get('use_image', False),
+                    use_image_size=job.get('use_image_size', False),
+                    image_filename=job.get('image_filename'),
                     mcnl_lora=job.get('mcnl_lora', False),
                     snofs_lora=job.get('snofs_lora', False),
+                    male_lora=job.get('male_lora', False),
                     output_path=str(output_path),
                     wait=True
                 )
@@ -204,8 +233,14 @@ def process_queue():
                     seed,
                     file_prefix,
                     subfolder,
+                    job.get('cfg', 1.0),
+                    job.get('shift', 3.0),
+                    job.get('use_image', False),
+                    job.get('use_image_size', False),
+                    job.get('image_filename'),
                     job.get('mcnl_lora', False),
-                    job.get('snofs_lora', False)
+                    job.get('snofs_lora', False),
+                    job.get('male_lora', False)
                 )
                 
                 job['status'] = 'completed'
@@ -294,11 +329,17 @@ def add_to_queue():
         'width': int(data.get('width', 1024)),
         'height': int(data.get('height', 1024)),
         'steps': int(data.get('steps', 4)),
+        'cfg': float(data.get('cfg', 1.0)),
+        'shift': float(data.get('shift', 3.0)),
         'seed': data.get('seed'),
+        'use_image': data.get('use_image', False),
+        'use_image_size': data.get('use_image_size', False),
+        'image_filename': data.get('image_filename'),
         'file_prefix': data.get('file_prefix', 'comfyui'),
         'subfolder': data.get('subfolder', ''),
         'mcnl_lora': data.get('mcnl_lora', False),
         'snofs_lora': data.get('snofs_lora', False),
+        'male_lora': data.get('male_lora', False),
         'status': 'queued',
         'added_at': datetime.now().isoformat()
     }
@@ -331,11 +372,17 @@ def add_batch_to_queue():
                 'width': int(job_data.get('width', 1024)),
                 'height': int(job_data.get('height', 1024)),
                 'steps': int(job_data.get('steps', 4)),
+                'cfg': float(job_data.get('cfg', 1.0)),
+                'shift': float(job_data.get('shift', 3.0)),
                 'seed': job_data.get('seed'),
+                'use_image': job_data.get('use_image', False),
+                'use_image_size': job_data.get('use_image_size', False),
+                'image_filename': job_data.get('image_filename'),
                 'file_prefix': job_data.get('file_prefix', 'batch'),
                 'subfolder': job_data.get('subfolder', ''),
                 'mcnl_lora': job_data.get('mcnl_lora', False),
                 'snofs_lora': job_data.get('snofs_lora', False),
+                'male_lora': job_data.get('male_lora', False),
                 'status': 'queued',
                 'added_at': datetime.now().isoformat()
             }
@@ -487,6 +534,157 @@ def create_folder():
         return jsonify({'success': True, 'path': str(target_dir.relative_to(OUTPUT_DIR))})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/upload', methods=['POST'])
+def upload_image():
+    """Upload an image for use in image-to-image generation"""
+    if 'image' not in request.files:
+        return jsonify({'success': False, 'error': 'No image file provided'}), 400
+    
+    file = request.files['image']
+    
+    if file.filename == '':
+        return jsonify({'success': False, 'error': 'No selected file'}), 400
+    
+    # Check file extension
+    allowed_extensions = {'.png', '.jpg', '.jpeg', '.webp', '.bmp'}
+    file_ext = Path(file.filename).suffix.lower()
+    
+    if file_ext not in allowed_extensions:
+        return jsonify({'success': False, 'error': 'Invalid file type. Allowed: ' + ', '.join(allowed_extensions)}), 400
+    
+    try:
+        # Save to ComfyUI input directory (C:\pinokio\api\comfy.git\app\input)
+        comfyui_input_dir = Path('..') / 'comfy.git' / 'app' / 'input'
+        
+        # Verify directory exists
+        if not comfyui_input_dir.exists():
+            return jsonify({
+                'success': False, 
+                'error': f'ComfyUI input directory not found at {comfyui_input_dir.absolute()}'
+            }), 500
+        
+        # Generate unique filename
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"upload_{timestamp}{file_ext}"
+        filepath = comfyui_input_dir / filename
+        
+        # Save file
+        file.save(str(filepath))
+        
+        return jsonify({
+            'success': True,
+            'filename': filename,
+            'message': 'Image uploaded successfully'
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/browse_images', methods=['GET'])
+def browse_images():
+    """Browse images from input or output folders"""
+    folder = request.args.get('folder', 'input')  # 'input' or 'output'
+    
+    try:
+        if folder == 'input':
+            # List images from ComfyUI input directory
+            comfyui_input_dir = Path('..') / 'comfy.git' / 'app' / 'input'
+            
+            if not comfyui_input_dir.exists():
+                return jsonify({'success': False, 'error': 'Input directory not found'}), 404
+            
+            # Get all image files
+            allowed_extensions = {'.png', '.jpg', '.jpeg', '.webp', '.bmp'}
+            images = []
+            
+            for file in comfyui_input_dir.iterdir():
+                if file.is_file() and file.suffix.lower() in allowed_extensions:
+                    images.append(file.name)
+            
+            # Sort by modification time (newest first)
+            images.sort(key=lambda x: (comfyui_input_dir / x).stat().st_mtime, reverse=True)
+            
+            return jsonify({'success': True, 'images': images, 'folder': 'input'})
+        else:
+            # For output folder, use existing browse endpoint functionality
+            return jsonify({'success': False, 'error': 'Use /api/browse for output folder'}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/image/input/<filename>')
+def serve_input_image(filename):
+    """Serve images from ComfyUI input directory"""
+    try:
+        comfyui_input_dir = Path('..') / 'comfy.git' / 'app' / 'input'
+        # Resolve to absolute path for send_from_directory
+        absolute_dir = comfyui_input_dir.resolve()
+        file_path = absolute_dir / filename
+        
+        # Debug logging
+        print(f"Serving input image: {filename}")
+        print(f"From directory: {absolute_dir}")
+        print(f"File exists: {file_path.exists()}")
+        
+        if not file_path.exists():
+            print(f"File not found: {file_path}")
+            return jsonify({'error': 'File not found'}), 404
+            
+        return send_from_directory(str(absolute_dir), filename)
+    except Exception as e:
+        print(f"Error serving input image {filename}: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 404
+
+
+@app.route('/api/copy_to_input', methods=['POST'])
+def copy_to_input():
+    """Copy an image from output folder to input folder"""
+    data = request.json
+    filename = data.get('filename', '')
+    
+    if not filename:
+        return jsonify({'success': False, 'error': 'Filename required'}), 400
+    
+    try:
+        # Source: output directory
+        source = OUTPUT_DIR / filename
+        
+        if not source.exists():
+            return jsonify({'success': False, 'error': 'Source file not found'}), 404
+        
+        # Destination: ComfyUI input directory
+        comfyui_input_dir = Path('..') / 'comfy.git' / 'app' / 'input'
+        
+        if not comfyui_input_dir.exists():
+            return jsonify({'success': False, 'error': 'Input directory not found'}), 500
+        
+        # Generate unique filename if file already exists
+        dest_filename = source.name
+        dest_path = comfyui_input_dir / dest_filename
+        
+        counter = 1
+        while dest_path.exists():
+            stem = source.stem
+            suffix = source.suffix
+            dest_filename = f"{stem}_{counter}{suffix}"
+            dest_path = comfyui_input_dir / dest_filename
+            counter += 1
+        
+        # Copy file
+        import shutil
+        shutil.copy2(source, dest_path)
+        
+        return jsonify({
+            'success': True,
+            'filename': dest_filename,
+            'message': 'Image copied to input folder'
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/move', methods=['POST'])

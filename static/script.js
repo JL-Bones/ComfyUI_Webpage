@@ -150,6 +150,39 @@ function initializeEventListeners() {
     // Clear seed button
     document.getElementById('clearSeedBtn').addEventListener('click', clearSeed);
     
+    // Image upload handlers
+    document.getElementById('imageUpload').addEventListener('change', handleImagePreview);
+    document.getElementById('clearImageBtn').addEventListener('click', clearUploadedImage);
+    document.getElementById('useImageSize').addEventListener('change', toggleDimensionFields);
+    
+    // Batch image upload handlers
+    document.getElementById('batchImageUpload').addEventListener('change', handleBatchImagePreview);
+    document.getElementById('clearBatchImageBtn').addEventListener('click', clearBatchUploadedImage);
+    document.getElementById('batchUseImageSize').addEventListener('change', toggleBatchDimensionFields);
+    
+    // Image browser buttons
+    const browseImageBtn = document.getElementById('browseImageBtn');
+    const browseBatchImageBtn = document.getElementById('browseBatchImageBtn');
+    const closeBrowserBtn = document.getElementById('closeBrowserBtn');
+    
+    if (browseImageBtn) {
+        browseImageBtn.addEventListener('click', () => openImageBrowser('single'));
+    }
+    if (browseBatchImageBtn) {
+        browseBatchImageBtn.addEventListener('click', () => openImageBrowser('batch'));
+    }
+    if (closeBrowserBtn) {
+        closeBrowserBtn.addEventListener('click', closeImageBrowser);
+    }
+    
+    // Image browser tabs
+    document.querySelectorAll('.image-browser-tab').forEach(tab => {
+        tab.addEventListener('click', (e) => {
+            const folder = e.target.dataset.folder;
+            loadImageBrowserFolder(folder, '');
+        });
+    });
+    
     // Fullscreen viewer
     document.getElementById('fullscreenBtn').addEventListener('click', openFullscreen);
     document.getElementById('fullscreenClose').addEventListener('click', closeFullscreen);
@@ -708,6 +741,10 @@ function openCompletedImage(relativePath) {
     browseFolder(folderPath);
 }
 
+// Global state for uploaded images
+let uploadedImageFilename = null;
+let batchUploadedImageFilename = null;
+
 // Image Generation
 async function generateImage() {
     const prompt = document.getElementById('prompt').value.trim();
@@ -717,16 +754,32 @@ async function generateImage() {
         return;
     }
     
+    // Check if image needs to be uploaded first
+    const imageUpload = document.getElementById('imageUpload');
+    if (imageUpload.files.length > 0 && !uploadedImageFilename) {
+        showNotification('Uploading image...', 'Please wait', 'info');
+        const uploadSuccess = await handleImageUpload();
+        if (!uploadSuccess) {
+            return;
+        }
+    }
+    
     const data = {
         prompt: prompt,
         width: parseInt(document.getElementById('width').value),
         height: parseInt(document.getElementById('height').value),
         steps: parseInt(document.getElementById('steps').value),
+        cfg: parseFloat(document.getElementById('cfg').value),
+        shift: parseFloat(document.getElementById('shift').value),
         seed: document.getElementById('seed').value ? parseInt(document.getElementById('seed').value) : null,
+        use_image: uploadedImageFilename ? true : false,
+        use_image_size: document.getElementById('useImageSize').checked,
+        image_filename: uploadedImageFilename,
         file_prefix: document.getElementById('filePrefix').value.trim() || 'comfyui',
         subfolder: document.getElementById('subfolder').value.trim(),
         mcnl_lora: document.getElementById('mcnlLora').checked,
-        snofs_lora: document.getElementById('snofsLora').checked
+        snofs_lora: document.getElementById('snofsLora').checked,
+        male_lora: document.getElementById('maleLora').checked
     };
     
     try {
@@ -752,6 +805,361 @@ async function generateImage() {
     } catch (error) {
         console.error('Error queueing job:', error);
         showNotification('Error queueing job. Make sure ComfyUI is running.', 'Error', 'error');
+    }
+}
+
+// Handle image upload
+async function handleImageUpload() {
+    const imageUpload = document.getElementById('imageUpload');
+    const file = imageUpload.files[0];
+    
+    if (!file) {
+        return false;
+    }
+    
+    const formData = new FormData();
+    formData.append('image', file);
+    
+    try {
+        const response = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            uploadedImageFilename = result.filename;
+            showNotification('Image uploaded successfully', 'Success', 'success', 2000);
+            return true;
+        } else {
+            showNotification(result.error || 'Upload failed', 'Error', 'error');
+            return false;
+        }
+    } catch (error) {
+        console.error('Error uploading image:', error);
+        showNotification('Error uploading image', 'Error', 'error');
+        return false;
+    }
+}
+
+// Handle image upload preview
+function handleImagePreview() {
+    const imageUpload = document.getElementById('imageUpload');
+    const imagePreview = document.getElementById('imagePreview');
+    const imagePreviewImg = document.getElementById('imagePreviewImg');
+    const clearImageBtn = document.getElementById('clearImageBtn');
+    const useImageSizeGroup = document.getElementById('useImageSizeGroup');
+    
+    const file = imageUpload.files[0];
+    
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            imagePreviewImg.src = e.target.result;
+            imagePreview.style.display = 'block';
+            clearImageBtn.style.display = 'inline-flex';
+            useImageSizeGroup.style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+        
+        // Reset uploaded filename so it uploads again
+        uploadedImageFilename = null;
+    } else {
+        imagePreview.style.display = 'none';
+        clearImageBtn.style.display = 'none';
+        useImageSizeGroup.style.display = 'none';
+        uploadedImageFilename = null;
+    }
+}
+
+// Clear uploaded image
+function clearUploadedImage() {
+    const imageUpload = document.getElementById('imageUpload');
+    const imagePreview = document.getElementById('imagePreview');
+    const clearImageBtn = document.getElementById('clearImageBtn');
+    const useImageSizeGroup = document.getElementById('useImageSizeGroup');
+    const useImageSize = document.getElementById('useImageSize');
+    
+    imageUpload.value = '';
+    imagePreview.style.display = 'none';
+    clearImageBtn.style.display = 'none';
+    useImageSizeGroup.style.display = 'none';
+    useImageSize.checked = false;
+    uploadedImageFilename = null;
+    
+    // Show width/height again
+    toggleDimensionFields();
+}
+
+// Toggle width/height visibility based on useImageSize checkbox
+function toggleDimensionFields() {
+    const useImageSize = document.getElementById('useImageSize');
+    const widthGroup = document.getElementById('widthGroup');
+    const heightGroup = document.getElementById('heightGroup');
+    
+    if (useImageSize.checked) {
+        widthGroup.style.display = 'none';
+        heightGroup.style.display = 'none';
+    } else {
+        widthGroup.style.display = 'block';
+        heightGroup.style.display = 'block';
+    }
+}
+
+// Batch image upload handlers
+function handleBatchImagePreview() {
+    const imageUpload = document.getElementById('batchImageUpload');
+    const imagePreview = document.getElementById('batchImagePreview');
+    const imagePreviewImg = document.getElementById('batchImagePreviewImg');
+    const clearImageBtn = document.getElementById('clearBatchImageBtn');
+    const useImageSizeGroup = document.getElementById('batchUseImageSizeGroup');
+    
+    const file = imageUpload.files[0];
+    
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            imagePreviewImg.src = e.target.result;
+            imagePreview.style.display = 'block';
+            clearImageBtn.style.display = 'inline-flex';
+            useImageSizeGroup.style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+        
+        // Reset uploaded filename so it uploads again
+        batchUploadedImageFilename = null;
+    } else {
+        imagePreview.style.display = 'none';
+        clearImageBtn.style.display = 'none';
+        useImageSizeGroup.style.display = 'none';
+        batchUploadedImageFilename = null;
+    }
+}
+
+function clearBatchUploadedImage() {
+    const imageUpload = document.getElementById('batchImageUpload');
+    const imagePreview = document.getElementById('batchImagePreview');
+    const clearImageBtn = document.getElementById('clearBatchImageBtn');
+    const useImageSizeGroup = document.getElementById('batchUseImageSizeGroup');
+    const useImageSize = document.getElementById('batchUseImageSize');
+    
+    imageUpload.value = '';
+    imagePreview.style.display = 'none';
+    clearImageBtn.style.display = 'none';
+    useImageSizeGroup.style.display = 'none';
+    useImageSize.checked = false;
+    batchUploadedImageFilename = null;
+    
+    // Re-enable width/height CSV checkboxes if they were disabled
+    toggleBatchDimensionFields();
+}
+
+function toggleBatchDimensionFields() {
+    const useImageSize = document.getElementById('batchUseImageSize');
+    const widthVariable = document.getElementById('batchWidthVariable');
+    const heightVariable = document.getElementById('batchHeightVariable');
+    
+    if (useImageSize.checked) {
+        // Disable and uncheck width/height CSV options
+        widthVariable.checked = false;
+        widthVariable.disabled = true;
+        heightVariable.checked = false;
+        heightVariable.disabled = true;
+    } else {
+        // Re-enable width/height CSV options
+        widthVariable.disabled = false;
+        heightVariable.disabled = false;
+    }
+}
+
+async function handleBatchImageUpload() {
+    const imageUpload = document.getElementById('batchImageUpload');
+    const file = imageUpload.files[0];
+    
+    if (!file) {
+        return false;
+    }
+    
+    const formData = new FormData();
+    formData.append('image', file);
+    
+    try {
+        const response = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            batchUploadedImageFilename = result.filename;
+            return true;
+        } else {
+            showNotification(result.error || 'Upload failed', 'Error', 'error');
+            return false;
+        }
+    } catch (error) {
+        console.error('Error uploading batch image:', error);
+        showNotification('Error uploading image', 'Error', 'error');
+        return false;
+    }
+}
+
+// Image Browser Functions
+let imageBrowserMode = 'single'; // 'single' or 'batch'
+let currentBrowserFolder = 'input'; // 'input' or 'output'
+
+function openImageBrowser(mode) {
+    imageBrowserMode = mode;
+    const modal = document.getElementById('imageBrowserModal');
+    modal.style.display = 'flex';
+    
+    // Load input folder by default
+    loadImageBrowserFolder('input', '');
+}
+
+function closeImageBrowser() {
+    const modal = document.getElementById('imageBrowserModal');
+    modal.style.display = 'none';
+}
+
+async function loadImageBrowserFolder(folder, subpath) {
+    currentBrowserFolder = folder;
+    
+    // Update tab active state
+    document.querySelectorAll('.image-browser-tab').forEach(tab => {
+        tab.classList.remove('active');
+        if (tab.dataset.folder === folder) {
+            tab.classList.add('active');
+        }
+    });
+    
+    // Update path display
+    const pathDisplay = document.getElementById('imageBrowserPathText');
+    const folderName = folder === 'input' ? 'Input' : 'Output';
+    if (pathDisplay) {
+        pathDisplay.textContent = subpath ? `${folderName} / ${subpath}` : folderName;
+    }
+    
+    try {
+        // Fetch images from appropriate folder
+        const endpoint = folder === 'input' 
+            ? '/api/browse_images?folder=input'
+            : `/api/browse?path=${encodeURIComponent(subpath)}`;
+        
+        const response = await fetch(endpoint);
+        const data = await response.json();
+        
+        // Render images
+        const grid = document.getElementById('imageBrowserGrid');
+        grid.innerHTML = '';
+        
+        const files = folder === 'input' ? data.images : data.files;
+        
+        if (!files || files.length === 0) {
+            grid.innerHTML = '<p style="color: #888; grid-column: 1/-1; text-align: center;">No images found</p>';
+            return;
+        }
+        
+        files.forEach(file => {
+            // Handle both string filenames (input) and objects (output)
+            const filename = typeof file === 'string' ? file : (file.filename || file);
+            const relativePath = typeof file === 'string' ? null : (file.relative_path || file.filename);
+            
+            const imagePath = folder === 'input' 
+                ? `/api/image/input/${encodeURIComponent(filename)}`
+                : `/outputs/${relativePath || filename}`;
+            
+            const div = document.createElement('div');
+            div.className = 'browser-image-item';
+            
+            const img = document.createElement('img');
+            img.src = imagePath;
+            img.alt = filename;
+            img.loading = 'lazy';
+            img.onerror = function() {
+                console.error(`Failed to load image: ${imagePath}`);
+                this.style.opacity = '0.3';
+                this.alt = 'Failed to load';
+            };
+            
+            const nameDiv = document.createElement('div');
+            nameDiv.className = 'browser-image-name';
+            nameDiv.textContent = filename;
+            
+            div.appendChild(img);
+            div.appendChild(nameDiv);
+            
+            div.addEventListener('click', () => {
+                selectBrowsedImage(filename, folder, imagePath);
+            });
+            
+            grid.appendChild(div);
+        });
+    } catch (error) {
+        console.error('Error loading browser folder:', error);
+        showNotification('Error loading images', 'Error', 'error');
+    }
+}
+
+async function selectBrowsedImage(filename, folder, imagePath) {
+    try {
+        // If from output folder, copy to input folder
+        let finalFilename = filename;
+        if (folder === 'output') {
+            const response = await fetch('/api/copy_to_input', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename })
+            });
+            const data = await response.json();
+            if (!data.success) {
+                throw new Error(data.error || 'Failed to copy image');
+            }
+            finalFilename = data.filename;
+        }
+        
+        // Set the appropriate uploaded filename and preview
+        if (imageBrowserMode === 'single') {
+            uploadedImageFilename = finalFilename;
+            
+            // Update preview
+            const imagePreviewImg = document.getElementById('imagePreviewImg');
+            const imagePreview = document.getElementById('imagePreview');
+            const clearImageBtn = document.getElementById('clearImageBtn');
+            const useImageSizeGroup = document.getElementById('useImageSizeGroup');
+            
+            imagePreviewImg.src = imagePath;
+            imagePreview.style.display = 'block';
+            clearImageBtn.style.display = 'inline-flex';
+            useImageSizeGroup.style.display = 'block';
+            
+            // Clear file input
+            document.getElementById('imageUpload').value = '';
+        } else {
+            batchUploadedImageFilename = finalFilename;
+            
+            // Update batch preview
+            const imagePreviewImg = document.getElementById('batchImagePreviewImg');
+            const imagePreview = document.getElementById('batchImagePreview');
+            const clearImageBtn = document.getElementById('clearBatchImageBtn');
+            const useImageSizeGroup = document.getElementById('batchUseImageSizeGroup');
+            
+            imagePreviewImg.src = imagePath;
+            imagePreview.style.display = 'block';
+            clearImageBtn.style.display = 'inline-flex';
+            useImageSizeGroup.style.display = 'block';
+            
+            // Clear file input
+            document.getElementById('batchImageUpload').value = '';
+        }
+        
+        closeImageBrowser();
+        showNotification('Image selected', 'Success', 'success');
+    } catch (error) {
+        console.error('Error selecting image:', error);
+        showNotification('Error selecting image', 'Error', 'error');
     }
 }
 
@@ -1058,9 +1466,13 @@ function prevImage() {
 // Metadata Rendering
 function renderMetadata(image) {
     const loraStatus = [];
-    if (image.mcnl_lora) loraStatus.push('MCNL');
-    if (image.snofs_lora) loraStatus.push('Snofs');
+    if (image.mcnl_lora) loraStatus.push('MCNL (F)');
+    if (image.snofs_lora) loraStatus.push('Snofs (F)');
+    if (image.male_lora) loraStatus.push('Male');
     const loraText = loraStatus.length > 0 ? loraStatus.join(', ') : 'None';
+    
+    const modeText = image.use_image ? 'Image-to-Image' : 'Text-to-Image';
+    const imageSizeText = image.use_image_size ? 'Yes' : 'No';
     
     return `
         <div class="metadata-grid">
@@ -1069,12 +1481,34 @@ function renderMetadata(image) {
                 <div class="metadata-value">${escapeHtml(image.prompt)}</div>
             </div>
             <div class="metadata-item">
+                <div class="metadata-label">Mode</div>
+                <div class="metadata-value">${modeText}</div>
+            </div>
+            ${image.use_image ? `
+            <div class="metadata-item">
+                <div class="metadata-label">Source Image</div>
+                <div class="metadata-value">${escapeHtml(image.image_filename || 'N/A')}</div>
+            </div>
+            <div class="metadata-item">
+                <div class="metadata-label">Use Image Size</div>
+                <div class="metadata-value">${imageSizeText}</div>
+            </div>
+            ` : ''}
+            <div class="metadata-item">
                 <div class="metadata-label">Dimensions</div>
                 <div class="metadata-value">${image.width} × ${image.height}</div>
             </div>
             <div class="metadata-item">
                 <div class="metadata-label">Steps</div>
                 <div class="metadata-value">${image.steps}</div>
+            </div>
+            <div class="metadata-item">
+                <div class="metadata-label">CFG Scale</div>
+                <div class="metadata-value">${image.cfg || 1.0}</div>
+            </div>
+            <div class="metadata-item">
+                <div class="metadata-label">Shift</div>
+                <div class="metadata-value">${image.shift || 3.0}</div>
             </div>
             <div class="metadata-item">
                 <div class="metadata-label">Seed</div>
@@ -1105,11 +1539,17 @@ function importImageData() {
     document.getElementById('width').value = currentImageData.width || 512;
     document.getElementById('height').value = currentImageData.height || 1024;
     document.getElementById('steps').value = currentImageData.steps || 4;
+    document.getElementById('cfg').value = currentImageData.cfg || 1.0;
+    document.getElementById('shift').value = currentImageData.shift || 3.0;
     document.getElementById('seed').value = currentImageData.seed || '';
     document.getElementById('filePrefix').value = currentImageData.file_prefix || 'comfyui';
     document.getElementById('subfolder').value = currentImageData.subfolder || '';
     document.getElementById('mcnlLora').checked = currentImageData.mcnl_lora || false;
     document.getElementById('snofsLora').checked = currentImageData.snofs_lora || false;
+    document.getElementById('maleLora').checked = currentImageData.male_lora || false;
+    
+    // Note: We don't import image-related fields (use_image, use_image_size, image_filename)
+    // as those are specific to the source image upload workflow
     
     // Close the modal
     closeImageModal();
@@ -1626,11 +2066,14 @@ function getVariableParameters() {
     if (document.getElementById('batchWidthVariable').checked) variableParams.push('width');
     if (document.getElementById('batchHeightVariable').checked) variableParams.push('height');
     if (document.getElementById('batchStepsVariable').checked) variableParams.push('steps');
+    if (document.getElementById('batchCfgVariable').checked) variableParams.push('cfg');
+    if (document.getElementById('batchShiftVariable').checked) variableParams.push('shift');
     if (document.getElementById('batchSeedVariable').checked) variableParams.push('seed');
     if (document.getElementById('batchFilePrefixVariable').checked) variableParams.push('file_prefix');
     if (document.getElementById('batchSubfolderVariable').checked) variableParams.push('subfolder');
     if (document.getElementById('batchMcnlLoraVariable').checked) variableParams.push('mcnl_lora');
     if (document.getElementById('batchSnofsLoraVariable').checked) variableParams.push('snofs_lora');
+    if (document.getElementById('batchMaleLoraVariable').checked) variableParams.push('male_lora');
     
     return variableParams;
 }
@@ -1740,16 +2183,33 @@ async function queueBatchGeneration() {
         return;
     }
     
+    // Check if batch image needs to be uploaded first
+    const batchImageUpload = document.getElementById('batchImageUpload');
+    if (batchImageUpload.files.length > 0 && !batchUploadedImageFilename) {
+        showNotification('Uploading image...', 'Please wait', 'info');
+        const uploadSuccess = await handleBatchImageUpload();
+        if (!uploadSuccess) {
+            return;
+        }
+    }
+    
     // Get default parameters
+    const useImageSize = document.getElementById('batchUseImageSize').checked;
     const defaults = {
         width: parseInt(document.getElementById('batchWidth').value),
         height: parseInt(document.getElementById('batchHeight').value),
         steps: parseInt(document.getElementById('batchSteps').value),
+        cfg: parseFloat(document.getElementById('batchCfg').value),
+        shift: parseFloat(document.getElementById('batchShift').value),
         seed: document.getElementById('batchSeed').value ? parseInt(document.getElementById('batchSeed').value) : null,
         file_prefix: document.getElementById('batchFilePrefix').value.trim() || 'batch',
         subfolder: document.getElementById('batchSubfolder').value.trim(),
         mcnl_lora: document.getElementById('batchMcnlLora').checked,
-        snofs_lora: document.getElementById('batchSnofsLora').checked
+        snofs_lora: document.getElementById('batchSnofsLora').checked,
+        male_lora: document.getElementById('batchMaleLora').checked,
+        use_image: batchUploadedImageFilename ? true : false,
+        use_image_size: useImageSize,
+        image_filename: batchUploadedImageFilename
     };
     
     const variableParams = getVariableParameters();
@@ -1761,22 +2221,36 @@ async function queueBatchGeneration() {
             width: defaults.width,
             height: defaults.height,
             steps: defaults.steps,
+            cfg: defaults.cfg,
+            shift: defaults.shift,
             seed: defaults.seed,
             file_prefix: defaults.file_prefix,
             subfolder: defaults.subfolder,
             mcnl_lora: defaults.mcnl_lora,
-            snofs_lora: defaults.snofs_lora
+            snofs_lora: defaults.snofs_lora,
+            male_lora: defaults.male_lora,
+            use_image: defaults.use_image,
+            use_image_size: defaults.use_image_size,
+            image_filename: defaults.image_filename
         };
         
         // Override with CSV values for variable parameters
+        // Skip width/height from CSV if use_image_size is enabled
         variableParams.forEach(param => {
+            // Skip width/height if using image size
+            if (defaults.use_image_size && (param === 'width' || param === 'height')) {
+                return;
+            }
+            
             if (item.params[param] !== undefined) {
                 const value = item.params[param];
                 
                 // Convert types appropriately
                 if (param === 'width' || param === 'height' || param === 'steps' || param === 'seed') {
                     job[param] = value ? parseInt(value) : (param === 'seed' ? null : job[param]);
-                } else if (param === 'mcnl_lora' || param === 'snofs_lora') {
+                } else if (param === 'cfg' || param === 'shift') {
+                    job[param] = value ? parseFloat(value) : job[param];
+                } else if (param === 'mcnl_lora' || param === 'snofs_lora' || param === 'male_lora') {
                     // Convert to boolean (true/false, yes/no, 1/0)
                     const lowerValue = String(value).toLowerCase().trim();
                     job[param] = lowerValue === 'true' || lowerValue === 'yes' || lowerValue === '1';

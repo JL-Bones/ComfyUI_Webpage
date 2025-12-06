@@ -1,9 +1,13 @@
 # ComfyUI Web Interface - AI Agent Instructions
 
 ## Project Overview
-Flask-based web UI for ComfyUI image generation with AI-assisted prompting, batch generation, queue management, and file organization. **Requires ComfyUI server at `http://127.0.0.1:8188`**. Only dependency: Flask. Uses Qwen Image model workflow (4-step lightning generation).
+Flask-based web UI for ComfyUI image generation with AI-assisted prompting, batch generation, queue management, and file organization. **Requires ComfyUI server at `http://127.0.0.1:8188`**. Only dependency: Flask. Uses Qwen_Full.json workflow with image-to-image support (4-step lightning generation).
 
 **Recent Updates:**
+- **NEW: Qwen_Full.json workflow** - Supports both text-to-image and image-to-image generation
+- **NEW: Image upload** - Upload source images for img2img mode with automatic dimension detection
+- **NEW: Advanced parameters** - CFG scale (1.0), Shift (3.0), collapsible sections
+- **NEW: Male LoRA** - Added third LoRA option alongside MCNL and Snofs
 - Batch mode with [parameter] templates and CSV import/generation
 - AI streaming for real-time response display (Ollama only)
 - Multi-parameter AI editing with single/multiple selection
@@ -14,13 +18,23 @@ Flask-based web UI for ComfyUI image generation with AI-assisted prompting, batc
 ## Architecture (Three-Layer System)
 
 **1. ComfyUI Client** (`comfyui_client.py`)  
-Python stdlib wrapper (urllib, json). Modifies workflow JSON with hardcoded node IDs from `Imaginer.json`:
-- `75:6` - Positive prompt (CLIPTextEncode)  
-- `75:58` - Dimensions (EmptySD3LatentImage)  
-- `75:3` - Sampler (KSampler)
+Python stdlib wrapper (urllib, json). Modifies workflow JSON with hardcoded node IDs from `Qwen_Full.json`:
+- `45` - Positive prompt (PrimitiveStringMultiline)
+- `32` - Width (easy int)
+- `31` - Height (easy int)
+- `36` - Steps (easy int)
+- `39` - CFG (easy float)
+- `40` - Shift (easy float)
+- `35` - Seed (PrimitiveInt)
+- `38` - Use Image boolean (easy boolean)
+- `34` - Use Image Size boolean (easy boolean)
+- `43` - Image filename (LoadImage)
+- `41` - MCNL LoRA boolean (easy boolean)
+- `42` - Snofs LoRA boolean (easy boolean)
+- `33` - Male LoRA boolean (easy boolean)
 
 **2. Flask Backend** (`app.py`)  
-Queue processor (LIFO display, FIFO execution), metadata storage, AI integration. Serves on `0.0.0.0:4879`. Background daemon thread processes queue sequentially. 5-minute auto-unload with countdown timer.
+Queue processor (LIFO display, FIFO execution), metadata storage, AI integration. Serves on `0.0.0.0:4879`. Background daemon thread processes queue sequentially. 5-minute auto-unload with countdown timer. **Automatically unloads models when switching between text-to-image and image-to-image modes** to prevent memory issues.
 
 **3. Frontend** (`templates/index.html`, `static/`)  
 Vanilla JS SPA with three tabs (Single, Batch, Browser), collapsible mobile UI, custom modals (no browser dialogs), toast notifications, 1s polling, countdown timer, SSE streaming for AI responses.
@@ -35,7 +49,13 @@ AI Features: User → SSE stream (Ollama) or fetch (Gemini) → Real-time text d
 ```
 
 **LoRA System:**  
-Three boolean controls (MCNL, Snofs, OFace) map to workflow nodes `75:115:115`, `75:115:130`, `75:115:131`. Each has keyword hints for user guidance. Values stored in metadata and passed through entire generation pipeline.
+Three boolean controls (MCNL, Snofs, Male) map to workflow nodes `41`, `42`, `33`. MCNL and Snofs have keyword hints for user guidance. Values stored in metadata and passed through entire generation pipeline.
+
+**Image Upload System:**
+Image upload automatically sets `use_image=True`. When image is uploaded, `use_image_size` checkbox appears. If enabled, width/height fields are hidden and image dimensions are used. Uploaded images saved to ComfyUI input directory with timestamp-based filenames.
+
+**Image Browser System:**
+Browse button next to upload allows selecting existing images from input or output folders. Modal with tabs for Input/Output folders, displays images in grid. Output images copied to input folder when selected. Available in both Single and Batch modes.
 
 ## Critical Patterns
 
@@ -221,6 +241,10 @@ python -m py_compile <file>      # Check syntax
 - `DELETE /api/queue/<job_id>` - Remove queued or completed job (not active)
 - `POST /api/queue/clear` - Clears queued items only (preserves completed history)
 - `GET /api/browse?path=<subfolder>` - Browse folder with metadata (relative_path includes subfolder)
+- `GET /api/browse_images?folder=input` - List images from ComfyUI input directory
+- `GET /api/image/input/<filename>` - Serve image from ComfyUI input directory
+- `POST /api/upload` - Upload image to ComfyUI input directory (returns filename)
+- `POST /api/copy_to_input` - Copy image from output to input folder
 - `POST /api/folder` - Create subfolder
 - `POST /api/move` / `POST /api/delete` - Batch operations with conflict resolution
 - `POST /api/ai/optimize` - AI prompt optimization (accepts `is_batch` flag, streams with Ollama)
@@ -232,7 +256,7 @@ python -m py_compile <file>      # Check syntax
 - `POST /api/comfyui/unload` - Free RAM/VRAM/cache (manual, resets auto-unload timer)
 - `GET /api/comfyui/status` - Get timer status (timer_active, unload_in_seconds)
 
-**Auto-unload:** ComfyUI models unload after 5 minutes (300s) idle with countdown timer in UI. Ollama models unload immediately (`keep_alive: 0`). Manual unload resets timer.
+**Auto-unload:** ComfyUI models unload after 5 minutes (300s) idle with countdown timer in UI. Ollama models unload immediately (`keep_alive: 0`). Manual unload resets timer. **Models also automatically unload when switching between text-to-image and image-to-image modes** to prevent VRAM conflicts.
 
 **Response Format:** All write endpoints return JSON with `{success: bool, ...}`. Always check `result.success` in frontend. ComfyUI `/free` endpoint returns empty response - handle gracefully.
 
@@ -284,7 +308,7 @@ Fullscreen zoom (100-500%), keyboard (←/→/A/D/+/-/0/Space), autoplay (0.5-60
 2. Capture in `generateImage()` (script.js)  
 3. Add to job dict in `add_to_queue()` (app.py)  
 4. Add to `modify_workflow()` and `generate_image()` signatures (comfyui_client.py)
-5. Update workflow node in `modify_workflow()` using appropriate node ID from `Imaginer.json`
+5. Update workflow node in `modify_workflow()` using appropriate node ID from `Qwen_Full.json`
 6. Store in `add_metadata_entry()` signature (app.py)
 7. Display in `renderMetadata()` (script.js)
 8. Update `importImageData()` (script.js) to import the value
@@ -293,7 +317,7 @@ Fullscreen zoom (100-500%), keyboard (←/→/A/D/+/-/0/Space), autoplay (0.5-60
 Update TWO places: `app.py` line ~37, `comfyui_client.py` line ~18.
 
 **Change ComfyUI Workflow:**  
-1. Export workflow from ComfyUI as JSON → save as `Imaginer.json`
+1. Export workflow from ComfyUI as JSON → save as `Qwen_Full.json`
 2. Find node IDs for: prompt input, dimensions, sampler settings
 3. Update node IDs in `comfyui_client.py:modify_workflow()` method
 4. Test with single generation
@@ -320,12 +344,14 @@ if response_text:
 ├── comfyui_client.py      # Stdlib ComfyUI wrapper
 ├── ai_assistant.py        # AI (Ollama + Gemini, 60s keep-alive)
 ├── ai_instructions.py     # AI preset prompts
-├── Imaginer.json          # ComfyUI workflow (node IDs)
 ├── templates/index.html   # Mobile-optimized SPA
 ├── static/
 │   ├── script.js          # Vanilla JS, mobile handlers
 │   └── style.css          # Dark theme, mobile responsive
 ├── outputs/               # Gitignored - images, metadata, queue_state.json
+├── workflows/
+│   ├── Qwen_Full.json     # Current ComfyUI workflow (node IDs)
+│   └── Imaginer.json      # Legacy workflow
 └── *.json                 # Pinokio integration
 ```
 
@@ -350,12 +376,15 @@ let autoplayTimer = null;         // Autoplay setTimeout ID
 let isAutoplayActive = false;     // Autoplay on/off state
 let lastSeenCompletedIds = new Set(); // Track seen completions for folder refresh
 let aiCurrentPromptSource = 'single';  // 'single' or 'batch' for AI context
+let uploadedImageFilename = null; // Tracks uploaded image for generation
+let imageBrowserMode = 'single';  // 'single' or 'batch' for browse context
+let currentBrowserFolder = 'input'; // 'input' or 'output' for browser
 ```
 
 ## Integration Notes
 
 **Pinokio:** `install.json`, `start.json`, `update.json`, `reset.json` manage venv and Flask.
 
-**ComfyUI Workflow:** Node structure in `Imaginer.json` must match IDs in `comfyui_client.py:modify_workflow()`.
+**ComfyUI Workflow:** Node structure in `Qwen_Full.json` must match IDs in `comfyui_client.py:modify_workflow()`.
 
 **AI Models:** Ollama via `/api/tags`, Gemini hardcoded. Frontend polls `/api/ai/models` on load.
