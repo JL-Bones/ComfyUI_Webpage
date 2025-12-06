@@ -5,16 +5,19 @@ Flask-based web UI for ComfyUI with AI-assisted prompting, queue management, and
 ## Features
 
 - 🎨 **Dark-themed interface** with tab navigation (Single/Batch/Browser)
+- 📊 **Hardware monitor** - Real-time CPU/RAM/GPU/VRAM usage with color-coded progress bars
 - 📱 **Mobile-optimized** - Collapsible menus, touch-friendly controls, responsive design
 - 🤖 **AI assistance** - Prompt optimization and CSV generation with Ollama or Gemini (with streaming)
 - 📊 **Batch generation** - CSV-based parameter templates with AI generation support
-- 🎛️ **LoRA controls** - Three toggle switches with keyword hints (MCNL, Snofs, OFace)
+- 🖼️ **Image browser** - Browse and select existing images from input/output folders for img2img
+- 🎛️ **LoRA controls** - Three toggle switches with keyword hints (MCNL, Snofs, Male)
 - ⌨️ **Keyboard shortcuts** - Ctrl+Enter to generate, fullscreen navigation
 - 📋 **Persistent queue** - Shared across users, survives restarts, shows count badge
 - 📁 **Folder management** - Create, browse, move, delete with breadcrumbs
 - 🖼️ **Image viewer** - Fullscreen with zoom (100-500%), autoplay, keyboard nav, touch gestures
 - 💾 **Metadata tracking** - All generation params saved automatically
 - ⏱️ **Auto-unload with timer** - 5-minute countdown timer, frees RAM/VRAM/cache when idle
+- 🔄 **Smart mode switching** - Automatically unloads models when switching text-to-image ↔ image-to-image
 - 🔔 **Toast notifications** - Custom modals, no browser dialogs
 
 See [AI_FEATURES.md](AI_FEATURES.md) for AI setup and usage.
@@ -54,18 +57,20 @@ See [AI_FEATURES.md](AI_FEATURES.md) for AI setup and usage.
 
 ## Requirements
 
-- Python 3.7+ and Flask (`pip install flask`)
+- Python 3.7+
+- Flask and psutil (`pip install flask psutil`)
 - ComfyUI server running on `http://127.0.0.1:8188` with Qwen Image model installed
   - Model: `qwen_image_fp8_e4m3fn.safetensors` (diffusion model)
   - CLIP: `qwen_2.5_vl_7b_fp8_scaled.safetensors`
   - VAE: `qwen_image_vae.safetensors`
   - LoRA: `Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors`
 - Optional: Ollama or Gemini API key for AI features (see [AI_FEATURES.md](AI_FEATURES.md))
+- Optional: NVIDIA GPU with nvidia-smi for GPU/VRAM monitoring
 
 ## Quick Start
 
 ```powershell
-pip install flask
+pip install -r requirements.txt
 python app.py  # Starts on http://localhost:4879
 ```
 
@@ -83,20 +88,28 @@ The interface has three tabs:
 ### Generate Images (Single Mode)
 
 1. Navigate to the **Single Generation** tab (default)
-2. Enter your prompt in the text area (or press `Ctrl+Enter` to generate quickly)
-3. Adjust parameters:
+2. **Monitor hardware usage** - Check CPU/RAM/GPU/VRAM bars at the top (updates every 2 seconds)
+3. **Upload or browse images** (optional, for image-to-image):
+   - Click "Upload Image" to select a file from your computer
+   - Click "Browse" to select existing images from input/output folders
+   - Enable "Use Image Size" to match source image dimensions
+4. Enter your prompt in the text area (or press `Ctrl+Enter` to generate quickly)
+5. Adjust parameters:
    - **Width/Height**: Image dimensions (default: 1024×1024)
    - **Steps**: Sampling steps (default: 4)
+   - **CFG Scale**: Classifier-free guidance (default: 1.0)
+   - **Shift**: Generation shift parameter (default: 3.0)
    - **Seed**: Random seed (leave empty for random, ✕ button to clear)
    - **File Prefix**: Custom filename prefix (default: "comfyui")
    - **Subfolder**: Target folder for output (optional, set from browser)
-4. Configure **LoRA Settings** (collapsible section):
+6. Configure **LoRA Settings** (collapsible section):
    - **MCNL LoRA**: Manga/comic line art style with keywords
    - **Snofs LoRA**: Soft lighting and artistic effects with keywords
-   - **OFace LoRA**: Facial expression enhancement with keywords
-5. Click "Generate" button (next to prompt) or press `Ctrl+Enter` to add to queue
-6. Watch progress in the left sidebar queue panel
-7. Completed items show thumbnail images - click to jump to Image Browser
+   - **Male LoRA**: Male character enhancement
+7. Click "Generate" button (next to prompt) or press `Ctrl+Enter` to add to queue
+8. Watch progress in the left sidebar queue panel
+9. **Note:** Models automatically unload when switching between text-to-image and image-to-image modes
+10. Completed items show thumbnail images - click to jump to Image Browser
 
 ### Generate Batches (Batch Mode)
 
@@ -186,25 +199,27 @@ See [AI_FEATURES.md](AI_FEATURES.md) for detailed AI usage guide.
 ## Project Structure
 
 ```
-├── app.py                 # Flask backend with queue processor & AI endpoints (SSE streaming)
+├── app.py                 # Flask backend with queue processor, AI endpoints, hardware monitoring
 ├── comfyui_client.py      # Python stdlib ComfyUI API wrapper (urllib, json)
 ├── ai_assistant.py        # AI integration (Ollama + Gemini, immediate unload after use)
 ├── ai_instructions.py     # Preset instructions for AI operations (batch & single)
-├── Imaginer.json          # ComfyUI workflow definition with node IDs
 ├── .env.example           # Example environment file for API keys
 ├── AI_FEATURES.md         # Complete AI features documentation
 ├── templates/
-│   └── index.html         # Three-tab SPA (Single/Batch/Browser) with mobile optimization
+│   └── index.html         # Three-tab SPA with hardware monitor, image browser modal
 ├── static/
-│   ├── style.css          # Dark theme, mobile responsive (≤768px, ≤480px)
-│   ├── script.js          # Vanilla JS (batch, streaming, mobile handlers, AI, modals)
+│   ├── style.css          # Dark theme, mobile responsive, hardware monitor styling
+│   ├── script.js          # Vanilla JS (queue, AI, hardware polling, image browser, modals)
 ├── outputs/               # Generated images with subfolders (gitignored)
 │   ├── subfolder1/       # User-created folders
 │   │   └── *.png        # Images in subfolder
 │   ├── *.png             # Root-level images
 │   ├── metadata.json     # Generation metadata with folder tracking
 │   └── queue_state.json  # Persistent queue state (shared across users)
-├── requirements.txt       # Python dependencies (Flask only)
+├── workflows/
+│   ├── Qwen_Full.json    # Current ComfyUI workflow with img2img support
+│   └── Imaginer.json     # Legacy workflow (text-to-image only)
+├── requirements.txt       # Python dependencies (flask, psutil)
 ├── install.json          # Pinokio install script
 ├── start.json            # Pinokio start script
 ├── update.json           # Pinokio update script
@@ -234,9 +249,16 @@ See [AI_FEATURES.md](AI_FEATURES.md) for detailed AI usage guide.
 - `POST /api/ai/generate-parameter-values` - Generate single/multi parameter values (streaming)
 - `POST /api/ai/stop` - Stop AI generation and unload model immediately
 
-### ComfyUI Memory Management Endpoints
+### System Monitoring Endpoints
+- `GET /api/hardware/stats` - Get CPU/RAM/GPU/VRAM usage statistics
 - `POST /api/comfyui/unload` - Manually unload all models and clear memory
 - `GET /api/comfyui/status` - Get memory status and auto-unload timer info
+
+### Image Management Endpoints
+- `GET /api/browse_images?folder=input` - List images from ComfyUI input directory
+- `GET /api/image/input/<filename>` - Serve image from ComfyUI input directory
+- `POST /api/upload` - Upload image to ComfyUI input directory (returns filename)
+- `POST /api/copy_to_input` - Copy image from output to input folder
 
 ## Pinokio Integration
 
@@ -284,13 +306,19 @@ app.run(host='0.0.0.0', port=4879, debug=False, threaded=True)
 - **No hot reload** - Restart Flask server after Python changes
 - Frontend changes (HTML/CSS/JS) only need browser refresh
 - Queue processing runs in daemon thread
-- Uses only Python stdlib for ComfyUI client (no pip dependencies)
-- Flask is the only external dependency
+- Uses Python stdlib for ComfyUI client (urllib, json - no external dependencies)
+- External dependencies: Flask, psutil
 - **Model Management:**
   - ComfyUI models auto-unload after 5 minutes idle (300s countdown timer)
+  - Models automatically unload when switching between text-to-image and image-to-image modes
   - Ollama models unload immediately after generation (`keep_alive: 0`)
-  - Both can be manually unloaded via UI buttons
+  - All can be manually unloaded via UI buttons
   - Stop button cancels AI streaming and unloads model instantly
+- **Hardware Monitoring:**
+  - Updates every 2 seconds via JavaScript polling
+  - Uses psutil for CPU/RAM monitoring (cross-platform)
+  - Uses nvidia-smi subprocess for GPU/VRAM (NVIDIA only, graceful fallback)
+  - Color-coded bars: blue (normal), orange (high), red (critical)
 
 ## Privacy
 

@@ -37,6 +37,9 @@ let activeStream = null;
 let currentStreamModel = null;
 let currentStreamProvider = null;
 
+// Hardware monitoring state
+let hardwareUpdateInterval;
+
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
     initializeEventListeners();
@@ -44,6 +47,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeMobileOverlay();
     browseFolder('');
     startQueueUpdates();
+    startHardwareMonitoring();
 });
 
 // Mobile Overlay for Sidebar
@@ -3212,6 +3216,62 @@ function aiUseResult() {
     
     closeAIEditModal();
     showNotification('Prompt updated successfully', 'Updated', 'success', 3000);
+}
+
+// ============================================================================
+// HARDWARE MONITORING
+// ============================================================================
+
+function startHardwareMonitoring() {
+    // Initial update
+    updateHardwareStats();
+    
+    // Update every 2 seconds
+    hardwareUpdateInterval = setInterval(updateHardwareStats, 2000);
+}
+
+async function updateHardwareStats() {
+    try {
+        const response = await fetch('/api/hardware/stats');
+        const data = await response.json();
+        
+        if (data.success) {
+            // Update CPU
+            updateHardwareBar('cpu', data.cpu.percent, data.cpu.label);
+            
+            // Update RAM
+            updateHardwareBar('ram', data.ram.percent, data.ram.label);
+            
+            // Update GPU
+            updateHardwareBar('gpu', data.gpu.percent, data.gpu.label);
+            
+            // Update VRAM
+            updateHardwareBar('vram', data.vram.percent, data.vram.label);
+        }
+    } catch (error) {
+        console.error('Error fetching hardware stats:', error);
+    }
+}
+
+function updateHardwareBar(type, percent, label) {
+    const bar = document.getElementById(`${type}Bar`);
+    const value = document.getElementById(`${type}Value`);
+    
+    if (!bar || !value) return;
+    
+    // Update bar width
+    bar.style.width = `${Math.min(percent, 100)}%`;
+    
+    // Update color based on usage
+    bar.classList.remove('high', 'critical');
+    if (percent >= 90) {
+        bar.classList.add('critical');
+    } else if (percent >= 75) {
+        bar.classList.add('high');
+    }
+    
+    // Update value text
+    value.textContent = label;
 }
 
 

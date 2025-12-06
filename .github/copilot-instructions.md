@@ -1,9 +1,12 @@
 # ComfyUI Web Interface - AI Agent Instructions
 
 ## Project Overview
-Flask-based web UI for ComfyUI image generation with AI-assisted prompting, batch generation, queue management, and file organization. **Requires ComfyUI server at `http://127.0.0.1:8188`**. Only dependency: Flask. Uses Qwen_Full.json workflow with image-to-image support (4-step lightning generation).
+Flask-based web UI for ComfyUI image generation with AI-assisted prompting, batch generation, queue management, and file organization. **Requires ComfyUI server at `http://127.0.0.1:8188`**. Dependencies: Flask, psutil. Uses Qwen_Full.json workflow with image-to-image support (4-step lightning generation).
 
 **Recent Updates:**
+- **NEW: Hardware Monitor** - Real-time CPU/RAM/GPU/VRAM monitoring with color-coded bars (psutil + nvidia-smi)
+- **NEW: Image Browser** - Browse and select existing images from input/output folders for img2img
+- **NEW: Auto Mode Switching** - Automatically unloads models when switching between text-to-image ↔ image-to-image
 - **NEW: Qwen_Full.json workflow** - Supports both text-to-image and image-to-image generation
 - **NEW: Image upload** - Upload source images for img2img mode with automatic dimension detection
 - **NEW: Advanced parameters** - CFG scale (1.0), Shift (3.0), collapsible sections
@@ -12,8 +15,6 @@ Flask-based web UI for ComfyUI image generation with AI-assisted prompting, batc
 - AI streaming for real-time response display (Ollama only)
 - Multi-parameter AI editing with single/multiple selection
 - Stop buttons for canceling AI generation mid-stream
-- CSV buttons and AI buttons now use white text for consistency
-- Mobile-optimized CSV button layout (full-width stacking)
 
 ## Architecture (Three-Layer System)
 
@@ -255,8 +256,11 @@ python -m py_compile <file>      # Check syntax
 - `GET /api/ai/models` - Get available models (Ollama + Gemini)
 - `POST /api/comfyui/unload` - Free RAM/VRAM/cache (manual, resets auto-unload timer)
 - `GET /api/comfyui/status` - Get timer status (timer_active, unload_in_seconds)
+- `GET /api/hardware/stats` - Get CPU/RAM/GPU/VRAM usage stats (requires psutil, nvidia-smi for GPU)
 
 **Auto-unload:** ComfyUI models unload after 5 minutes (300s) idle with countdown timer in UI. Ollama models unload immediately (`keep_alive: 0`). Manual unload resets timer. **Models also automatically unload when switching between text-to-image and image-to-image modes** to prevent VRAM conflicts.
+
+**Hardware Monitoring:** Real-time stats update every 2 seconds via `/api/hardware/stats`. Uses `psutil` for CPU/RAM, `nvidia-smi` subprocess for GPU/VRAM (gracefully handles missing GPU). Bars color-coded: blue (0-74%), orange (75-89%), red (90%+).
 
 **Response Format:** All write endpoints return JSON with `{success: bool, ...}`. Always check `result.success` in frontend. ComfyUI `/free` endpoint returns empty response - handle gracefully.
 
@@ -340,19 +344,20 @@ if response_text:
 
 ## File Structure
 ```
-├── app.py                 # Flask backend (queue, metadata, AI)
-├── comfyui_client.py      # Stdlib ComfyUI wrapper
-├── ai_assistant.py        # AI (Ollama + Gemini, 60s keep-alive)
+├── app.py                 # Flask backend (queue, metadata, AI, hardware monitoring)
+├── comfyui_client.py      # Stdlib ComfyUI wrapper (urllib, json)
+├── ai_assistant.py        # AI (Ollama + Gemini, immediate unload)
 ├── ai_instructions.py     # AI preset prompts
-├── templates/index.html   # Mobile-optimized SPA
+├── requirements.txt       # Python dependencies (flask, psutil)
+├── templates/index.html   # Mobile-optimized SPA with hardware monitor
 ├── static/
-│   ├── script.js          # Vanilla JS, mobile handlers
-│   └── style.css          # Dark theme, mobile responsive
+│   ├── script.js          # Vanilla JS (queue, AI, hardware polling, mobile)
+│   └── style.css          # Dark theme, mobile responsive, hardware bars
 ├── outputs/               # Gitignored - images, metadata, queue_state.json
 ├── workflows/
 │   ├── Qwen_Full.json     # Current ComfyUI workflow (node IDs)
 │   └── Imaginer.json      # Legacy workflow
-└── *.json                 # Pinokio integration
+└── *.json                 # Pinokio integration (install, start, update, reset)
 ```
 
 ## Mobile CSS Breakpoints

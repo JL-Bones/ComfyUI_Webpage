@@ -1121,6 +1121,81 @@ def get_comfyui_status():
     return jsonify(status)
 
 
+@app.route('/api/hardware/stats', methods=['GET'])
+def get_hardware_stats():
+    """Get current hardware usage statistics"""
+    try:
+        import psutil
+        
+        # CPU Usage
+        cpu_percent = psutil.cpu_percent(interval=0.1)
+        
+        # RAM Usage
+        ram = psutil.virtual_memory()
+        ram_used_gb = ram.used / (1024**3)
+        ram_total_gb = ram.total / (1024**3)
+        ram_percent = ram.percent
+        
+        # GPU/VRAM Usage (try to get from nvidia-smi or fallback)
+        gpu_percent = 0
+        vram_used_gb = 0
+        vram_total_gb = 0
+        vram_percent = 0
+        
+        try:
+            import subprocess
+            # Try nvidia-smi for NVIDIA GPUs
+            result = subprocess.run(
+                ['nvidia-smi', '--query-gpu=utilization.gpu,memory.used,memory.total', '--format=csv,noheader,nounits'],
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+            if result.returncode == 0:
+                values = result.stdout.strip().split(',')
+                if len(values) >= 3:
+                    gpu_percent = float(values[0].strip())
+                    vram_used_gb = float(values[1].strip()) / 1024
+                    vram_total_gb = float(values[2].strip()) / 1024
+                    vram_percent = (vram_used_gb / vram_total_gb * 100) if vram_total_gb > 0 else 0
+        except Exception as e:
+            print(f"GPU stats unavailable: {e}")
+        
+        return jsonify({
+            'success': True,
+            'cpu': {
+                'percent': round(cpu_percent, 1),
+                'label': f'{round(cpu_percent, 1)}%'
+            },
+            'ram': {
+                'percent': round(ram_percent, 1),
+                'used_gb': round(ram_used_gb, 2),
+                'total_gb': round(ram_total_gb, 2),
+                'label': f'{round(ram_used_gb, 1)} / {round(ram_total_gb, 1)} GB'
+            },
+            'gpu': {
+                'percent': round(gpu_percent, 1),
+                'label': f'{round(gpu_percent, 1)}%'
+            },
+            'vram': {
+                'percent': round(vram_percent, 1),
+                'used_gb': round(vram_used_gb, 2),
+                'total_gb': round(vram_total_gb, 2),
+                'label': f'{round(vram_used_gb, 1)} / {round(vram_total_gb, 1)} GB'
+            }
+        })
+    except ImportError:
+        return jsonify({
+            'success': False,
+            'error': 'psutil not installed'
+        }), 500
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 if __name__ == '__main__':
     print("=" * 60)
     print("ComfyUI Web UI Starting...")

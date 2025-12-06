@@ -360,6 +360,72 @@ body {
     gap: 0.75rem;
 }
 
+/* Hardware Monitor */
+.hardware-monitor {
+    background-color: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    padding: 0.75rem 2rem;
+    display: flex;
+    gap: 2rem;
+    align-items: center;
+}
+
+.hw-stat {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.hw-label {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    white-space: nowrap;
+    min-width: 65px;
+}
+
+.hw-label svg {
+    flex-shrink: 0;
+}
+
+.hw-bar {
+    flex: 1;
+    height: 8px;
+    background-color: var(--bg-tertiary);
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+}
+
+.hw-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-primary), var(--accent-hover));
+    transition: width 0.5s ease, background 0.3s ease;
+    border-radius: 4px;
+}
+
+.hw-fill.high {
+    background: linear-gradient(90deg, var(--warning), #dc2626);
+}
+
+.hw-fill.critical {
+    background: linear-gradient(90deg, var(--error), #991b1b);
+}
+
+.hw-value {
+    color: var(--text-primary);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    white-space: nowrap;
+    min-width: 75px;
+    text-align: right;
+}
+
 /* Tab Navigation */
 .tab-navigation {
     display: flex;
@@ -1535,6 +1601,33 @@ textarea.form-control {
     
     .app-header h1 {
         font-size: 1.125rem;
+    }
+    
+    /* Hardware monitor on mobile */
+    .hardware-monitor {
+        padding: 0.5rem 1rem;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+    
+    .hw-stat {
+        flex: 0 0 calc(50% - 0.5rem);
+        min-width: 0;
+    }
+    
+    .hw-label {
+        min-width: 50px;
+        font-size: 0.75rem;
+    }
+    
+    .hw-label svg {
+        width: 12px;
+        height: 12px;
+    }
+    
+    .hw-value {
+        font-size: 0.75rem;
+        min-width: 60px;
     }
     
     /* Queue sidebar as overlay */
