@@ -179,7 +179,7 @@ class AIAssistant:
                 param_hints.append("- file_prefix: Use descriptive names matching content (e.g., 'portrait', 'landscape', 'character')")
             if 'subfolder' in variable_parameters:
                 param_hints.append("- subfolder: Use logical folder names for organization (e.g., 'portraits', 'landscapes', 'variations')")
-            if 'mcnl_lora' in variable_parameters or 'snofs_lora' in variable_parameters or 'oface_lora' in variable_parameters:
+            if 'mcnl_lora' in variable_parameters or 'snofs_lora' in variable_parameters:
                 param_hints.append("- LoRA parameters: Use true/false, yes/no, or 1/0 to enable/disable")
             
             if param_hints:

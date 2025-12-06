@@ -726,8 +726,7 @@ async function generateImage() {
         file_prefix: document.getElementById('filePrefix').value.trim() || 'comfyui',
         subfolder: document.getElementById('subfolder').value.trim(),
         mcnl_lora: document.getElementById('mcnlLora').checked,
-        snofs_lora: document.getElementById('snofsLora').checked,
-        oface_lora: document.getElementById('ofaceLora').checked
+        snofs_lora: document.getElementById('snofsLora').checked
     };
     
     try {
@@ -1061,7 +1060,6 @@ function renderMetadata(image) {
     const loraStatus = [];
     if (image.mcnl_lora) loraStatus.push('MCNL');
     if (image.snofs_lora) loraStatus.push('Snofs');
-    if (image.oface_lora) loraStatus.push('OFace');
     const loraText = loraStatus.length > 0 ? loraStatus.join(', ') : 'None';
     
     return `
@@ -1112,7 +1110,6 @@ function importImageData() {
     document.getElementById('subfolder').value = currentImageData.subfolder || '';
     document.getElementById('mcnlLora').checked = currentImageData.mcnl_lora || false;
     document.getElementById('snofsLora').checked = currentImageData.snofs_lora || false;
-    document.getElementById('ofaceLora').checked = currentImageData.oface_lora || false;
     
     // Close the modal
     closeImageModal();
@@ -1634,7 +1631,6 @@ function getVariableParameters() {
     if (document.getElementById('batchSubfolderVariable').checked) variableParams.push('subfolder');
     if (document.getElementById('batchMcnlLoraVariable').checked) variableParams.push('mcnl_lora');
     if (document.getElementById('batchSnofsLoraVariable').checked) variableParams.push('snofs_lora');
-    if (document.getElementById('batchOfaceLoraVariable').checked) variableParams.push('oface_lora');
     
     return variableParams;
 }
@@ -1753,8 +1749,7 @@ async function queueBatchGeneration() {
         file_prefix: document.getElementById('batchFilePrefix').value.trim() || 'batch',
         subfolder: document.getElementById('batchSubfolder').value.trim(),
         mcnl_lora: document.getElementById('batchMcnlLora').checked,
-        snofs_lora: document.getElementById('batchSnofsLora').checked,
-        oface_lora: document.getElementById('batchOfaceLora').checked
+        snofs_lora: document.getElementById('batchSnofsLora').checked
     };
     
     const variableParams = getVariableParameters();
@@ -1770,8 +1765,7 @@ async function queueBatchGeneration() {
             file_prefix: defaults.file_prefix,
             subfolder: defaults.subfolder,
             mcnl_lora: defaults.mcnl_lora,
-            snofs_lora: defaults.snofs_lora,
-            oface_lora: defaults.oface_lora
+            snofs_lora: defaults.snofs_lora
         };
         
         // Override with CSV values for variable parameters
@@ -1782,7 +1776,7 @@ async function queueBatchGeneration() {
                 // Convert types appropriately
                 if (param === 'width' || param === 'height' || param === 'steps' || param === 'seed') {
                     job[param] = value ? parseInt(value) : (param === 'seed' ? null : job[param]);
-                } else if (param === 'mcnl_lora' || param === 'snofs_lora' || param === 'oface_lora') {
+                } else if (param === 'mcnl_lora' || param === 'snofs_lora') {
                     // Convert to boolean (true/false, yes/no, 1/0)
                     const lowerValue = String(value).toLowerCase().trim();
                     job[param] = lowerValue === 'true' || lowerValue === 'yes' || lowerValue === '1';

@@ -24,7 +24,7 @@ class ComfyUIClient:
         self.server_address = server_address
         self.client_id = str(uuid.uuid4())
         
-    def load_workflow(self, workflow_path: str = "Imaginer.json") -> Dict[str, Any]:
+    def load_workflow(self, workflow_path: str = "workflows/Imaginer.json") -> Dict[str, Any]:
         """Load workflow from JSON file"""
         with open(workflow_path, 'r') as f:
             return json.load(f)
@@ -131,8 +131,7 @@ class ComfyUIClient:
         cfg: Optional[float] = None,
         seed: Optional[int] = None,
         mcnl_lora: bool = False,
-        snofs_lora: bool = False,
-        oface_lora: bool = False
+        snofs_lora: bool = False
     ) -> Dict[str, Any]:
         """
         Modify workflow parameters
@@ -147,7 +146,6 @@ class ComfyUIClient:
             seed: Random seed (None for random)
             mcnl_lora: Enable MCNL LoRA
             snofs_lora: Enable Snofs LoRA
-            oface_lora: Enable OFace LoRA
             
         Returns:
             Modified workflow
@@ -179,7 +177,6 @@ class ComfyUIClient:
         # Update LoRA booleans
         modified["75:115:115"]["inputs"]["value"] = mcnl_lora
         modified["75:115:130"]["inputs"]["value"] = snofs_lora
-        modified["75:115:131"]["inputs"]["value"] = oface_lora
         
         return modified
     
@@ -193,7 +190,6 @@ class ComfyUIClient:
         seed: Optional[int] = None,
         mcnl_lora: bool = False,
         snofs_lora: bool = False,
-        oface_lora: bool = False,
         output_path: Optional[str] = None,
         wait: bool = True
     ) -> Optional[str]:
@@ -209,7 +205,6 @@ class ComfyUIClient:
             seed: Random seed (None for random)
             mcnl_lora: Enable MCNL LoRA
             snofs_lora: Enable Snofs LoRA
-            oface_lora: Enable OFace LoRA
             output_path: Path to save the image (None to not save)
             wait: Whether to wait for completion
             
@@ -227,8 +222,7 @@ class ComfyUIClient:
             cfg=cfg,
             seed=seed,
             mcnl_lora=mcnl_lora,
-            snofs_lora=snofs_lora,
-            oface_lora=oface_lora
+            snofs_lora=snofs_lora
         )
         
         # Queue the prompt

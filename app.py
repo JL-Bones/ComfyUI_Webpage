@@ -130,7 +130,7 @@ def save_queue_state():
         print(f"Error saving queue state: {e}")
 
 
-def add_metadata_entry(image_path, prompt, width, height, steps, seed, file_prefix, subfolder, mcnl_lora=False, snofs_lora=False, oface_lora=False):
+def add_metadata_entry(image_path, prompt, width, height, steps, seed, file_prefix, subfolder, mcnl_lora=False, snofs_lora=False):
     """Add a new metadata entry"""
     metadata = load_metadata()
     entry = {
@@ -146,8 +146,7 @@ def add_metadata_entry(image_path, prompt, width, height, steps, seed, file_pref
         "seed": seed,
         "file_prefix": file_prefix,
         "mcnl_lora": mcnl_lora,
-        "snofs_lora": snofs_lora,
-        "oface_lora": oface_lora
+        "snofs_lora": snofs_lora
     }
     metadata.append(entry)
     save_metadata(metadata)
@@ -191,7 +190,6 @@ def process_queue():
                     seed=seed,
                     mcnl_lora=job.get('mcnl_lora', False),
                     snofs_lora=job.get('snofs_lora', False),
-                    oface_lora=job.get('oface_lora', False),
                     output_path=str(output_path),
                     wait=True
                 )
@@ -207,8 +205,7 @@ def process_queue():
                     file_prefix,
                     subfolder,
                     job.get('mcnl_lora', False),
-                    job.get('snofs_lora', False),
-                    job.get('oface_lora', False)
+                    job.get('snofs_lora', False)
                 )
                 
                 job['status'] = 'completed'
@@ -302,7 +299,6 @@ def add_to_queue():
         'subfolder': data.get('subfolder', ''),
         'mcnl_lora': data.get('mcnl_lora', False),
         'snofs_lora': data.get('snofs_lora', False),
-        'oface_lora': data.get('oface_lora', False),
         'status': 'queued',
         'added_at': datetime.now().isoformat()
     }
@@ -340,7 +336,6 @@ def add_batch_to_queue():
                 'subfolder': job_data.get('subfolder', ''),
                 'mcnl_lora': job_data.get('mcnl_lora', False),
                 'snofs_lora': job_data.get('snofs_lora', False),
-                'oface_lora': job_data.get('oface_lora', False),
                 'status': 'queued',
                 'added_at': datetime.now().isoformat()
             }
@@ -767,7 +762,7 @@ def generate_csv_with_ai():
                 param_hints.append("- file_prefix: Use descriptive names matching content")
             if 'subfolder' in variable_parameters:
                 param_hints.append("- subfolder: Use logical folder names for organization")
-            if any(lora in variable_parameters for lora in ['mcnl_lora', 'snofs_lora', 'oface_lora']):
+            if any(lora in variable_parameters for lora in ['mcnl_lora', 'snofs_lora']):
                 param_hints.append("- LoRA parameters: Use true/false, yes/no, or 1/0")
             
             if param_hints:
