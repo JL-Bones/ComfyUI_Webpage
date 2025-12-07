@@ -1114,6 +1114,9 @@ async function loadImageBrowserFolder(folder, subpath) {
                 ? `/api/image/input/${encodeURIComponent(filePath)}`
                 : `/outputs/${relativePath || filename}`;
             
+            // For output folder, use relativePath for copying; for input, use filePath
+            const filePathForSelection = folder === 'output' ? (relativePath || filename) : filePath;
+            
             const div = document.createElement('div');
             div.className = 'browser-image-item';
             
@@ -1135,7 +1138,7 @@ async function loadImageBrowserFolder(folder, subpath) {
             div.appendChild(nameDiv);
             
             div.addEventListener('click', () => {
-                selectBrowsedImage(filePath, folder, imagePath);
+                selectBrowsedImage(filePathForSelection, folder, imagePath);
             });
             
             grid.appendChild(div);

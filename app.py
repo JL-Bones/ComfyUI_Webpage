@@ -692,19 +692,20 @@ def copy_to_input():
         return jsonify({'success': False, 'error': 'Filename required'}), 400
     
     try:
-        # Source: output directory
+        # Source: output directory (can include subfolder path)
         source = OUTPUT_DIR / filename
         
         if not source.exists():
-            return jsonify({'success': False, 'error': 'Source file not found'}), 404
+            print(f"Source file not found: {source}")
+            return jsonify({'success': False, 'error': f'Source file not found: {filename}'}), 404
         
-        # Destination: ComfyUI input directory
+        # Destination: ComfyUI input directory (root level)
         comfyui_input_dir = Path('..') / 'comfy.git' / 'app' / 'input'
         
         if not comfyui_input_dir.exists():
             return jsonify({'success': False, 'error': 'Input directory not found'}), 500
         
-        # Generate unique filename if file already exists
+        # Generate unique filename if file already exists (copy to root of input folder)
         dest_filename = source.name
         dest_path = comfyui_input_dir / dest_filename
         
@@ -720,12 +721,17 @@ def copy_to_input():
         import shutil
         shutil.copy2(source, dest_path)
         
+        print(f"Copied {source} to {dest_path}")
+        
         return jsonify({
             'success': True,
             'filename': dest_filename,
             'message': 'Image copied to input folder'
         })
     except Exception as e:
+        print(f"Error copying to input: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -1238,6 +1244,41 @@ def get_hardware_stats():
         }), 500
 
 
+def ensure_dummy_image():
+    """Create a dummy image if permanent\violet.webp doesn't exist"""
+    comfyui_input_dir = Path('..') / 'comfy.git' / 'app' / 'input'
+    permanent_dir = comfyui_input_dir / 'permanent'
+    dummy_image_path = permanent_dir / 'violet.webp'
+    
+    if not dummy_image_path.exists():
+        print(f"Creating dummy image: {dummy_image_path}")
+        permanent_dir.mkdir(parents=True, exist_ok=True)
+        
+        try:
+            # Create a simple 512x512 purple/violet image using PIL
+            from PIL import Image
+            img = Image.new('RGB', (512, 512), color=(138, 43, 226))  # Violet color
+            img.save(str(dummy_image_path), 'WEBP')
+            print(f"✓ Dummy image created successfully")
+        except ImportError:
+            print("Warning: PIL not available, creating placeholder file")
+            # If PIL is not available, create a minimal valid WebP file
+            # This is a 1x1 violet pixel WebP file (minimal valid WebP)
+            webp_data = bytes([
+                0x52, 0x49, 0x46, 0x46, 0x3A, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50,
+                0x56, 0x50, 0x38, 0x4C, 0x2E, 0x00, 0x00, 0x00, 0x2F, 0x00, 0x00, 0x00,
+                0x00, 0x47, 0x00, 0x9D, 0x01, 0x2A, 0x01, 0x00, 0x01, 0x00, 0x11, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00
+            ])
+            with open(dummy_image_path, 'wb') as f:
+                f.write(webp_data)
+            print(f"✓ Placeholder image created")
+    else:
+        print(f"✓ Dummy image already exists: {dummy_image_path}")
+
+
 if __name__ == '__main__':
     print("=" * 60)
     print("ComfyUI Web UI Starting...")
@@ -1245,5 +1286,10 @@ if __name__ == '__main__':
     print(f"Server: http://0.0.0.0:4879")
     print(f"Output Directory: {OUTPUT_DIR.absolute()}")
     print(f"ComfyUI Server: http://127.0.0.1:8188")
+    print("=" * 60)
+    
+    # Ensure dummy image exists
+    ensure_dummy_image()
+    
     print("=" * 60)
     app.run(host='0.0.0.0', port=4879, debug=False, threaded=True)
