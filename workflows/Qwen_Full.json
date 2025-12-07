@@ -113,7 +113,7 @@
   },
   "43": {
     "inputs": {
-      "image": "permanent\\violet.webp"
+      "image": "violet.webp"
     },
     "class_type": "LoadImage",
     "_meta": {
@@ -205,6 +205,202 @@
     "class_type": "KSampler",
     "_meta": {
       "title": "KSampler"
+    }
+  },
+  "3:61:46": {
+    "inputs": {
+      "boolean": [
+        "38",
+        0
+      ],
+      "on_true": [
+        "34",
+        0
+      ],
+      "on_false": [
+        "3:61:32",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "3:61:32": {
+    "inputs": {
+      "value": false
+    },
+    "class_type": "easy boolean",
+    "_meta": {
+      "title": "Boolean"
+    }
+  },
+  "3:61:24": {
+    "inputs": {
+      "width": [
+        "32",
+        0
+      ],
+      "height": [
+        "31",
+        0
+      ],
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Empty Latent Image"
+    }
+  },
+  "3:61:30": {
+    "inputs": {
+      "boolean": [
+        "3:61:46",
+        0
+      ],
+      "on_true": [
+        "3:61:4",
+        0
+      ],
+      "on_false": [
+        "3:61:24",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "3:61:4": {
+    "inputs": {
+      "pixels": [
+        "3:22",
+        0
+      ],
+      "vae": [
+        "3:10",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE Encode"
+    }
+  },
+  "3:60:27": {
+    "inputs": {
+      "text": "",
+      "clip": [
+        "3:62:33:142",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Negative Prompt)"
+    }
+  },
+  "3:60:12": {
+    "inputs": {
+      "prompt": "",
+      "clip": [
+        "3:62:33:142",
+        0
+      ],
+      "vae": [
+        "3:10",
+        0
+      ],
+      "image1": [
+        "3:22",
+        0
+      ]
+    },
+    "class_type": "TextEncodeQwenImageEditPlus",
+    "_meta": {
+      "title": "TextEncodeQwenImageEditPlus"
+    }
+  },
+  "3:60:26": {
+    "inputs": {
+      "text": [
+        "45",
+        0
+      ],
+      "clip": [
+        "3:62:33:142",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "3:60:11": {
+    "inputs": {
+      "prompt": [
+        "45",
+        0
+      ],
+      "clip": [
+        "3:62:33:142",
+        0
+      ],
+      "vae": [
+        "3:10",
+        0
+      ],
+      "image1": [
+        "3:22",
+        0
+      ]
+    },
+    "class_type": "TextEncodeQwenImageEditPlus",
+    "_meta": {
+      "title": "TextEncodeQwenImageEditPlus"
+    }
+  },
+  "3:60:28": {
+    "inputs": {
+      "boolean": [
+        "38",
+        0
+      ],
+      "on_true": [
+        "3:60:11",
+        0
+      ],
+      "on_false": [
+        "3:60:26",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "3:60:29": {
+    "inputs": {
+      "boolean": [
+        "38",
+        0
+      ],
+      "on_true": [
+        "3:60:12",
+        0
+      ],
+      "on_false": [
+        "3:60:27",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
     }
   },
   "3:62:7": {
@@ -580,7 +776,7 @@
   },
   "3:62:33:125": {
     "inputs": {
-      "lora_name": "nsfw\\female\\Qwen_Snofs_1_2.safetensors",
+      "lora_name": "nsfw\\female\\Qwen_Snofs_1_3.safetensors",
       "strength_model": 1,
       "strength_clip": 1,
       "model": [
@@ -595,202 +791,6 @@
     "class_type": "LoraLoader",
     "_meta": {
       "title": "Load LoRA"
-    }
-  },
-  "3:61:46": {
-    "inputs": {
-      "boolean": [
-        "38",
-        0
-      ],
-      "on_true": [
-        "34",
-        0
-      ],
-      "on_false": [
-        "3:61:32",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "3:61:32": {
-    "inputs": {
-      "value": false
-    },
-    "class_type": "easy boolean",
-    "_meta": {
-      "title": "Boolean"
-    }
-  },
-  "3:61:24": {
-    "inputs": {
-      "width": [
-        "32",
-        0
-      ],
-      "height": [
-        "31",
-        0
-      ],
-      "batch_size": 1
-    },
-    "class_type": "EmptyLatentImage",
-    "_meta": {
-      "title": "Empty Latent Image"
-    }
-  },
-  "3:61:30": {
-    "inputs": {
-      "boolean": [
-        "3:61:46",
-        0
-      ],
-      "on_true": [
-        "3:61:4",
-        0
-      ],
-      "on_false": [
-        "3:61:24",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "3:61:4": {
-    "inputs": {
-      "pixels": [
-        "3:22",
-        0
-      ],
-      "vae": [
-        "3:10",
-        0
-      ]
-    },
-    "class_type": "VAEEncode",
-    "_meta": {
-      "title": "VAE Encode"
-    }
-  },
-  "3:60:27": {
-    "inputs": {
-      "text": "",
-      "clip": [
-        "3:62:33:142",
-        0
-      ]
-    },
-    "class_type": "CLIPTextEncode",
-    "_meta": {
-      "title": "CLIP Text Encode (Negative Prompt)"
-    }
-  },
-  "3:60:12": {
-    "inputs": {
-      "prompt": "",
-      "clip": [
-        "3:62:33:142",
-        0
-      ],
-      "vae": [
-        "3:10",
-        0
-      ],
-      "image1": [
-        "3:22",
-        0
-      ]
-    },
-    "class_type": "TextEncodeQwenImageEditPlus",
-    "_meta": {
-      "title": "TextEncodeQwenImageEditPlus"
-    }
-  },
-  "3:60:26": {
-    "inputs": {
-      "text": [
-        "45",
-        0
-      ],
-      "clip": [
-        "3:62:33:142",
-        0
-      ]
-    },
-    "class_type": "CLIPTextEncode",
-    "_meta": {
-      "title": "CLIP Text Encode (Positive Prompt)"
-    }
-  },
-  "3:60:11": {
-    "inputs": {
-      "prompt": [
-        "45",
-        0
-      ],
-      "clip": [
-        "3:62:33:142",
-        0
-      ],
-      "vae": [
-        "3:10",
-        0
-      ],
-      "image1": [
-        "3:22",
-        0
-      ]
-    },
-    "class_type": "TextEncodeQwenImageEditPlus",
-    "_meta": {
-      "title": "TextEncodeQwenImageEditPlus"
-    }
-  },
-  "3:60:28": {
-    "inputs": {
-      "boolean": [
-        "38",
-        0
-      ],
-      "on_true": [
-        "3:60:11",
-        0
-      ],
-      "on_false": [
-        "3:60:26",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "3:60:29": {
-    "inputs": {
-      "boolean": [
-        "38",
-        0
-      ],
-      "on_true": [
-        "3:60:12",
-        0
-      ],
-      "on_false": [
-        "3:60:27",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
     }
   }
 }
