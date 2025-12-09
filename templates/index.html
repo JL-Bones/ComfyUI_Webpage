@@ -148,8 +148,10 @@
             <!-- Tab Navigation -->
             <div class="tab-navigation">
                 <button class="tab-btn active" data-tab="single">Single</button>
-                <button class="tab-btn" data-tab="batch">Batch</button>
+                <button class="tab-btn" data-tab="batch">Text Batch</button>
+                <button class="tab-btn" data-tab="image-batch">Image Batch</button>
                 <button class="tab-btn" data-tab="browser">Browser</button>
+                <button class="tab-btn" data-tab="reveal">Reveal Browser</button>
             </div>
 
             <div class="content-wrapper">
@@ -387,11 +389,11 @@
                     </div>
                 </section>
 
-                <!-- Batch Generation Tab -->
+                <!-- Batch Generation Tab (Text Batch) -->
                 <section class="tab-content" id="batchTab">
                     <div class="generation-panel">
                         <div class="batch-header" style="margin-bottom: 1.5rem;">
-                            <h2 style="margin: 0 0 0.5rem 0;">Batch Generation</h2>
+                            <h2 style="margin: 0 0 0.5rem 0;">Text Batch Generation</h2>
                             <p style="color: var(--text-muted); margin: 0; font-size: 0.95rem;">
                                 Generate multiple images using a base prompt with parameters. Use [parameter] placeholders in your prompt and provide values via CSV.
                             </p>
@@ -675,6 +677,118 @@
                     </div>
                 </section>
 
+                <!-- Image Batch Tab -->
+                <section class="tab-content" id="imageBatchTab">
+                    <div class="generation-panel">
+                        <div class="batch-header" style="margin-bottom: 1.5rem;">
+                            <h2 style="margin: 0 0 0.5rem 0;">Image Batch Generation</h2>
+                            <p style="color: var(--text-muted); margin: 0; font-size: 0.95rem;">
+                                Select a folder from the ComfyUI input directory. All images in that folder will be queued using the same prompt and settings. Image size is used automatically.
+                            </p>
+                        </div>
+
+                        <!-- Prompt -->
+                        <div class="form-group">
+                            <label for="imageBatchPrompt">Prompt</label>
+                            <div class="prompt-container">
+                                <textarea 
+                                    id="imageBatchPrompt" 
+                                    rows="4" 
+                                    placeholder="Enter your prompt for all images..."
+                                    class="form-control"
+                                ></textarea>
+                                <button class="btn btn-primary" id="queueImageBatchBtn">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                                    </svg>
+                                    <span>Queue Image Batch</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Folder Selection -->
+                        <div class="form-group">
+                            <label>Input Folder</label>
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <button type="button" class="btn" id="chooseImageBatchFolderBtn">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                                    </svg>
+                                    Choose Folder
+                                </button>
+                                <span id="imageBatchFolderDisplay" style="color: var(--text-muted);">None selected</span>
+                            </div>
+                            <small style="color: var(--text-muted); display: block; margin-top: 0.25rem;">
+                                Uses all image files directly under the selected folder.
+                            </small>
+                        </div>
+
+                        <!-- Parameters (same as Single) -->
+                        <button class="collapsible-header" data-target="imageBatchParameters">
+                            <span>Parameters</span>
+                            <svg class="collapse-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                        </button>
+                        <div class="collapsible-content active" id="imageBatchParameters">
+                            <div class="parameters-grid">
+                                <div class="form-group">
+                                    <label for="imageBatchSteps">Steps</label>
+                                    <input type="number" id="imageBatchSteps" value="4" min="1" max="100" class="form-control">
+                                </div>
+                                <div class="form-group">
+                                    <label for="imageBatchCfg">CFG Scale</label>
+                                    <input type="number" id="imageBatchCfg" value="1.0" min="0.1" max="20.0" step="0.1" class="form-control">
+                                </div>
+                                <div class="form-group">
+                                    <label for="imageBatchShift">Shift</label>
+                                    <input type="number" id="imageBatchShift" value="3.0" min="0.0" max="10.0" step="0.1" class="form-control">
+                                </div>
+                                <div class="form-group">
+                                    <label for="imageBatchSeed">Seed (optional)</label>
+                                    <input type="number" id="imageBatchSeed" placeholder="Random" class="form-control">
+                                </div>
+                                <div class="form-group">
+                                    <label for="imageBatchFilePrefix">File Prefix</label>
+                                    <input type="text" id="imageBatchFilePrefix" placeholder="image_batch" class="form-control">
+                                </div>
+                                <div class="form-group">
+                                    <label for="imageBatchSubfolder">Output Folder</label>
+                                    <input type="text" id="imageBatchSubfolder" placeholder="Leave empty for root" class="form-control">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- LoRA Settings -->
+                        <button class="collapsible-header" data-target="imageBatchLoraSettings">
+                            <span>LoRA Settings</span>
+                            <svg class="collapse-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                        </button>
+                        <div class="collapsible-content" id="imageBatchLoraSettings">
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="imageBatchMcnlLora" class="checkbox-input">
+                                    <span>MCNL LoRA (Female)</span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="imageBatchSnofsLora" class="checkbox-input">
+                                    <span>Snofs LoRA (Female)</span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="imageBatchMaleLora" class="checkbox-input">
+                                    <span>Male LoRA</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
                 <!-- Image Browser Tab -->
                 <section class="tab-content" id="browserTab">
                     <div class="gallery-panel">
@@ -736,6 +850,37 @@
                     <div class="gallery-empty" id="galleryEmpty">
                         <p>No items in this folder</p>
                     </div>
+                    </div>
+                </section>
+
+                <!-- Reveal Browser Tab -->
+                <section class="tab-content" id="revealTab">
+                    <div class="gallery-panel">
+                        <div class="gallery-header">
+                            <h2>Reveal Browser</h2>
+                            <div class="gallery-toolbar">
+                                <button class="btn btn-sm" id="revealRefreshBtn" title="Refresh">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <polyline points="23 4 23 10 17 10"></polyline>
+                                        <polyline points="1 20 1 14 7 14"></polyline>
+                                        <path d="M3.51 9a9 9 0 0 1 14.13-3.36L23 10M1 14l5.36 4.36A9 9 0 0 0 20.49 15"></path>
+                                    </svg>
+                                    <span>Refresh</span>
+                                </button>
+                                <button class="btn btn-sm" id="revealToggleViewBtn" title="Toggle Input/Output">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                        <circle cx="12" cy="12" r="3"></circle>
+                                    </svg>
+                                    <span>Show Output</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="breadcrumb" id="revealBreadcrumb"></div>
+
+                        <div class="gallery-grid" id="revealGrid"></div>
+                        <div class="gallery-empty" id="revealEmpty"><p>No processed folders found</p></div>
                     </div>
                 </section>
             </div>
@@ -851,6 +996,13 @@
                         <circle cx="12" cy="12" r="10"></circle>
                         <line x1="12" y1="8" x2="12" y2="16"></line>
                         <line x1="8" y1="12" x2="16" y2="12"></line>
+                    </svg>
+                </button>
+                <!-- Reveal Toggle (only active in Reveal mode) -->
+                <button class="fullscreen-control-btn" id="fullscreenRevealToggle" title="Show Output" style="display: none;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
                     </svg>
                 </button>
             </div>
@@ -1261,8 +1413,9 @@
             </div>
             
             <!-- Modal Actions -->
-            <div class="custom-modal-actions" style="margin-top: 1rem;">
+            <div class="custom-modal-actions" style="margin-top: 1rem; display: flex; gap: 0.5rem;">
                 <button class="btn btn-secondary" id="closeBrowserBtn">Cancel</button>
+                <button class="btn btn-primary" id="useThisFolderBtn" style="display: none;">Use This Folder</button>
             </div>
         </div>
     </div>

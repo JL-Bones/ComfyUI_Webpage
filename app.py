@@ -399,6 +399,200 @@ def add_batch_to_queue():
     })
 
 
+@app.route('/api/queue/image-batch', methods=['POST'])
+def add_image_batch_to_queue():
+    """Queue all images from a selected input folder using same prompt/settings.
+    Uses image-to-image with use_image_size=True for each image file."""
+    global timer_stopped
+    data = request.json
+    prompt = (data.get('prompt') or '').strip()
+    folder = data.get('folder', '').strip()  # relative path under ComfyUI input
+    steps = int(data.get('steps', 4))
+    cfg = float(data.get('cfg', 1.0))
+    shift = float(data.get('shift', 3.0))
+    seed = data.get('seed')
+    file_prefix = data.get('file_prefix', 'image_batch')
+    subfolder = data.get('subfolder', '')
+    mcnl_lora = bool(data.get('mcnl_lora', False))
+    snofs_lora = bool(data.get('snofs_lora', False))
+    male_lora = bool(data.get('male_lora', False))
+
+    if not prompt:
+        return jsonify({'success': False, 'error': 'Prompt required'}), 400
+
+    try:
+        # Resolve ComfyUI input directory
+        comfyui_input_dir = Path('..') / 'comfy.git' / 'app' / 'input'
+        if not comfyui_input_dir.exists():
+            return jsonify({'success': False, 'error': 'ComfyUI input directory not found'}), 500
+
+        # Navigate to selected subfolder (or root if empty)
+        current_dir = comfyui_input_dir / folder if folder else comfyui_input_dir
+        if not current_dir.exists() or not current_dir.is_dir():
+            return jsonify({'success': False, 'error': 'Invalid input folder'}), 400
+
+        # Collect image files directly in this folder
+        allowed_extensions = {'.png', '.jpg', '.jpeg', '.webp', '.bmp'}
+        image_files = [f for f in current_dir.iterdir() if f.is_file() and f.suffix.lower() in allowed_extensions]
+
+        if not image_files:
+            return jsonify({'success': False, 'error': 'No images found in selected folder'}), 400
+
+        queued_ids = []
+        # If subfolder not provided, mirror input folder path under outputs
+        if not subfolder:
+            # Use the folder path relative to input root; normalize to posix style
+            subfolder = folder.replace('\\', '/').strip('/')
+
+        with queue_lock:
+            for file in image_files:
+                # Build relative path from input root for image_filename
+                rel_path = str(file.relative_to(comfyui_input_dir))
+                job = {
+                    'id': str(uuid.uuid4()),
+                    'prompt': prompt,
+                    # Width/height will be ignored when use_image_size=True
+                    'width': 1024,
+                    'height': 1024,
+                    'steps': steps,
+                    'cfg': cfg,
+                    'shift': shift,
+                    'seed': seed,
+                    'use_image': True,
+                    'use_image_size': True,
+                    'image_filename': rel_path,
+                    'file_prefix': file_prefix,
+                    'subfolder': subfolder,
+                    'mcnl_lora': mcnl_lora,
+                    'snofs_lora': snofs_lora,
+                    'male_lora': male_lora,
+                    'status': 'queued',
+                    'added_at': datetime.now().isoformat()
+                }
+                generation_queue.insert(0, job)
+                queued_ids.append(job['id'])
+
+            timer_stopped = False
+
+        save_queue_state()
+        return jsonify({'success': True, 'queued_count': len(queued_ids), 'job_ids': queued_ids})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/reveal', methods=['GET'])
+def reveal_browser():
+    """List input folders that have corresponding output folders with images, and show images within a selected folder."""
+    try:
+        comfyui_input_dir = Path('..') / 'comfy.git' / 'app' / 'input'
+        if not comfyui_input_dir.exists():
+            return jsonify({'success': False, 'error': 'ComfyUI input directory not found'}), 500
+
+        path = (request.args.get('path') or '').strip()
+        # Gather processed folders: any input subfolder (recursive) that has output images
+        processed = []
+
+        def has_image_files(directory: Path) -> bool:
+            allowed = {'.png', '.jpg', '.jpeg', '.webp', '.bmp'}
+            try:
+                for f in directory.iterdir():
+                    if f.is_file() and f.suffix.lower() in allowed:
+                        return True
+            except Exception:
+                pass
+            return False
+
+        # Walk input tree recursively
+        for root, dirs, files in os.walk(str(comfyui_input_dir)):
+            root_path = Path(root)
+            if root_path == comfyui_input_dir:
+                # Skip root itself; we list subfolders only
+                pass
+            else:
+                rel = str(root_path.relative_to(comfyui_input_dir)).replace('\\', '/')
+                out_dir = OUTPUT_DIR / rel
+                if out_dir.exists() and has_image_files(out_dir):
+                    processed.append({'name': root_path.name, 'path': rel})
+
+        # If a specific folder requested, list input and output images
+        input_images = []
+        output_images = []
+        pairs = []
+        if path:
+            in_dir = comfyui_input_dir / path
+            out_dir = OUTPUT_DIR / path
+            allowed_extensions = {'.png', '.jpg', '.jpeg', '.webp', '.bmp'}
+            if in_dir.exists():
+                for f in in_dir.iterdir():
+                    if f.is_file() and f.suffix.lower() in allowed_extensions:
+                        input_images.append({
+                            'filename': f.name,
+                            'path': str(f.relative_to(comfyui_input_dir)).replace('\\', '/'),
+                            'mtime': f.stat().st_mtime
+                        })
+            if out_dir.exists():
+                for f in out_dir.iterdir():
+                    if f.is_file() and f.suffix.lower() in allowed_extensions:
+                        output_images.append({
+                            'relative_path': str(f.relative_to(OUTPUT_DIR)).replace('\\', '/'),
+                            'filename': f.name,
+                            'mtime': f.stat().st_mtime
+                        })
+
+            input_images.sort(key=lambda x: x['mtime'], reverse=True)
+            output_images.sort(key=lambda x: x['mtime'], reverse=True)
+
+            # Build input->output linkage via metadata (image_filename -> output path)
+            try:
+                metadata = load_metadata()
+            except Exception:
+                metadata = []
+
+            # Map image_filename (relative to input root) to list of output rel paths under this subfolder
+            filename_to_outputs = {}
+            for entry in metadata:
+                try:
+                    # Only consider entries generated into this subfolder
+                    if entry.get('subfolder', '') != path:
+                        continue
+                    rel_out = str(Path(entry.get('path', '')).relative_to(OUTPUT_DIR)).replace('\\', '/')
+                    img_rel = (entry.get('image_filename') or '').replace('\\', '/')
+                    if not img_rel:
+                        continue
+                    filename_to_outputs.setdefault(img_rel, []).append({
+                        'relative_path': rel_out,
+                        'filename': entry.get('filename', '')
+                    })
+                except Exception:
+                    continue
+
+            # Create ordered pairs based on input_images order
+            for inp in input_images:
+                outputs = filename_to_outputs.get(inp['path'], [])
+                # Pick the most recent output if multiple
+                out_item = outputs[0] if outputs else None
+                pairs.append({
+                    'input': {
+                        'path': inp['path'],
+                        'filename': inp['filename']
+                    },
+                    'output': out_item  # may be None
+                })
+
+        processed.sort(key=lambda x: x['name'])
+
+        return jsonify({
+            'success': True,
+            'folders': processed,
+            'current_path': path,
+            'input_images': input_images,
+            'output_images': output_images,
+            'pairs': pairs
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/queue', methods=['GET'])
 def get_queue():
     """Get current queue status"""

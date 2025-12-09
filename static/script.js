@@ -186,6 +186,21 @@ function initializeEventListeners() {
             loadImageBrowserFolder(folder, '');
         });
     });
+
+    // Use This Folder (Image Batch)
+    const useFolderBtn = document.getElementById('useThisFolderBtn');
+    if (useFolderBtn) {
+        useFolderBtn.addEventListener('click', () => {
+            if (currentBrowserFolder === 'input') {
+                if (!selectedImageBatchFolder) {
+                    selectedImageBatchFolder = currentBrowserSubpath || '';
+                }
+                const display = document.getElementById('imageBatchFolderDisplay');
+                display.textContent = selectedImageBatchFolder ? selectedImageBatchFolder : 'Root';
+                closeImageBrowser();
+            }
+        });
+    }
     
     // Fullscreen viewer
     document.getElementById('fullscreenBtn').addEventListener('click', openFullscreen);
@@ -291,7 +306,9 @@ function switchTab(tabName) {
     const tabs = {
         'single': 'singleTab',
         'batch': 'batchTab',
-        'browser': 'browserTab'
+        'image-batch': 'imageBatchTab',
+        'browser': 'browserTab',
+        'reveal': 'revealTab'
     };
     
     const targetContent = document.getElementById(tabs[tabName]);
@@ -1011,9 +1028,10 @@ async function handleBatchImageUpload() {
 }
 
 // Image Browser Functions
-let imageBrowserMode = 'single'; // 'single' or 'batch'
+let imageBrowserMode = 'single'; // 'single' | 'batch' | 'image-batch'
 let currentBrowserFolder = 'input'; // 'input' or 'output'
 let currentBrowserSubpath = ''; // Current subfolder path
+let selectedImageBatchFolder = '';
 
 function openImageBrowser(mode) {
     imageBrowserMode = mode;
@@ -1028,6 +1046,8 @@ function openImageBrowser(mode) {
 function closeImageBrowser() {
     const modal = document.getElementById('imageBrowserModal');
     modal.style.display = 'none';
+    const useBtn = document.getElementById('useThisFolderBtn');
+    if (useBtn) useBtn.style.display = 'none';
 }
 
 async function loadImageBrowserFolder(folder, subpath) {
@@ -1098,7 +1118,16 @@ async function loadImageBrowserFolder(folder, subpath) {
                 <div class="browser-folder-name">${escapeHtml(folderItem.name)}</div>
             `;
             div.addEventListener('click', () => {
-                loadImageBrowserFolder(folder, folderItem.path);
+                if (imageBrowserMode === 'image-batch' && folder === 'input') {
+                    selectedImageBatchFolder = folderItem.path;
+                    const useBtn = document.getElementById('useThisFolderBtn');
+                    if (useBtn) {
+                        useBtn.style.display = 'inline-flex';
+                    }
+                    renderImageBrowserPath(folder, folderItem.path);
+                } else {
+                    loadImageBrowserFolder(folder, folderItem.path);
+                }
             });
             grid.appendChild(div);
         });
@@ -1171,6 +1200,16 @@ function renderImageBrowserPath(folder, subpath) {
     });
     
     pathDisplay.innerHTML = html;
+
+    // Toggle "Use This Folder" button visibility based on mode/folder
+    const useBtn = document.getElementById('useThisFolderBtn');
+    if (useBtn) {
+        if (imageBrowserMode === 'image-batch' && folder === 'input') {
+            useBtn.style.display = 'inline-flex';
+        } else {
+            useBtn.style.display = 'none';
+        }
+    }
 }
 
 async function selectBrowsedImage(filename, folder, imagePath) {
@@ -1660,6 +1699,9 @@ function openFullscreen() {
 
 function closeFullscreen() {
     isFullscreenActive = false;
+    revealFullscreenActive = false;
+    revealBaseFit = null;
+    revealBaseFitIndex = -1;
     
     // Stop autoplay
     stopAutoplay();
@@ -1675,6 +1717,9 @@ function closeFullscreen() {
     
     const viewer = document.getElementById('fullscreenViewer');
     viewer.classList.remove('active');
+    // Hide reveal toggle in fullscreen when closing
+    const fsToggleBtn = document.getElementById('fullscreenRevealToggle');
+    if (fsToggleBtn) fsToggleBtn.style.display = 'none';
     
     // Clear mouse activity timer
     if (mouseActivityTimer) {
@@ -1789,11 +1834,61 @@ function scheduleNextImage() {
 }
 
 function fullscreenNextImage() {
-    showFullscreenImage(currentImageIndex + 1);
+    if (revealFullscreenActive && Array.isArray(revealLinkedItems) && revealLinkedItems.length > 0) {
+        const total = revealLinkedItems.length;
+        if (total === 0) return;
+        let attempts = 0;
+        let nextIndex = (currentRevealIndex + 1 + total) % total;
+        // Find next index with available image for current view
+        while (attempts < total) {
+            const it = revealLinkedItems[nextIndex];
+            const src = revealShowOutput
+                ? (it.output ? `/outputs/${it.output.relative_path}` : null)
+                : `/api/image/input/${encodeURIComponent(it.input.path)}`;
+            if (src) {
+                currentRevealIndex = nextIndex;
+                revealBaseFit = null;
+                revealBaseFitIndex = currentRevealIndex;
+                openImageInFullscreen(src, true);
+                updateRevealFullscreenCounter();
+                return;
+            }
+            attempts++;
+            nextIndex = (nextIndex + 1) % total;
+        }
+        showNotification('No images available in this view', 'Empty View', 'warning');
+    } else {
+        showFullscreenImage(currentImageIndex + 1);
+    }
 }
 
 function fullscreenPrevImage() {
-    showFullscreenImage(currentImageIndex - 1);
+    if (revealFullscreenActive && Array.isArray(revealLinkedItems) && revealLinkedItems.length > 0) {
+        const total = revealLinkedItems.length;
+        if (total === 0) return;
+        let attempts = 0;
+        let prevIndex = (currentRevealIndex - 1 + total) % total;
+        // Find previous index with available image for current view
+        while (attempts < total) {
+            const it = revealLinkedItems[prevIndex];
+            const src = revealShowOutput
+                ? (it.output ? `/outputs/${it.output.relative_path}` : null)
+                : `/api/image/input/${encodeURIComponent(it.input.path)}`;
+            if (src) {
+                currentRevealIndex = prevIndex;
+                revealBaseFit = null;
+                revealBaseFitIndex = currentRevealIndex;
+                openImageInFullscreen(src, true);
+                updateRevealFullscreenCounter();
+                return;
+            }
+            attempts++;
+            prevIndex = (prevIndex - 1 + total) % total;
+        }
+        showNotification('No images available in this view', 'Empty View', 'warning');
+    } else {
+        showFullscreenImage(currentImageIndex - 1);
+    }
 }
 
 // Zoom Controls Setup
@@ -2012,6 +2107,32 @@ function handleKeyboard(e) {
         e.preventDefault();
         generateImage();
     }
+
+    // Reveal Browser keyboard navigation when not in fullscreen
+    const revealTab = document.getElementById('revealTab');
+    const isRevealActive = revealTab && revealTab.classList.contains('active');
+    if (isRevealActive && !fullscreenViewer.classList.contains('active')) {
+        if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+            e.preventDefault();
+            if (currentRevealIndex < 0) {
+                currentRevealIndex = 0;
+            } else if (revealLinkedItems && currentRevealIndex < revealLinkedItems.length - 1) {
+                currentRevealIndex += 1;
+            }
+            openRevealAtIndex(currentRevealIndex);
+            return;
+        }
+        if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+            e.preventDefault();
+            if (currentRevealIndex < 0) {
+                currentRevealIndex = 0;
+            } else if (revealLinkedItems && currentRevealIndex > 0) {
+                currentRevealIndex -= 1;
+            }
+            openRevealAtIndex(currentRevealIndex);
+            return;
+        }
+    }
 }
 
 // Utilities
@@ -2030,6 +2151,8 @@ function formatDate(isoString) {
 document.addEventListener('DOMContentLoaded', function() {
     initializeAIFeatures();
     initializeBatchAIFeatures();
+    initializeImageBatch();
+    initializeRevealBrowser();
 });
 
 // ============================================================================
@@ -2083,6 +2206,392 @@ function initializeBatchGeneration() {
     variableCheckboxes.forEach(checkbox => {
         checkbox.addEventListener('change', updateBatchPreview);
     });
+}
+
+// ============================================================================
+// IMAGE BATCH FEATURES
+// ============================================================================
+
+function initializeImageBatch() {
+    const chooseBtn = document.getElementById('chooseImageBatchFolderBtn');
+    const queueBtn = document.getElementById('queueImageBatchBtn');
+    if (chooseBtn) {
+        chooseBtn.addEventListener('click', () => {
+            imageBrowserMode = 'image-batch';
+            selectedImageBatchFolder = '';
+            loadImageBrowserFolder('input', '');
+            const modal = document.getElementById('imageBrowserModal');
+            modal.style.display = 'flex';
+        });
+    }
+    if (queueBtn) {
+        queueBtn.addEventListener('click', queueImageBatchGeneration);
+    }
+}
+
+async function queueImageBatchGeneration() {
+    const prompt = document.getElementById('imageBatchPrompt').value.trim();
+    if (!prompt) {
+        showNotification('Please enter a prompt', 'Missing Prompt', 'warning');
+        return;
+    }
+    const folderPath = selectedImageBatchFolder || currentBrowserSubpath || '';
+    const steps = parseInt(document.getElementById('imageBatchSteps').value);
+    const cfg = parseFloat(document.getElementById('imageBatchCfg').value);
+    const shift = parseFloat(document.getElementById('imageBatchShift').value);
+    const seedVal = document.getElementById('imageBatchSeed').value.trim();
+    const seed = seedVal ? parseInt(seedVal) : null;
+    const file_prefix = document.getElementById('imageBatchFilePrefix').value.trim() || 'image_batch';
+    const subfolder = document.getElementById('imageBatchSubfolder').value.trim();
+    const mcnl_lora = document.getElementById('imageBatchMcnlLora').checked;
+    const snofs_lora = document.getElementById('imageBatchSnofsLora').checked;
+    const male_lora = document.getElementById('imageBatchMaleLora').checked;
+
+    try {
+        const response = await fetch('/api/queue/image-batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                prompt,
+                folder: folderPath,
+                steps,
+                cfg,
+                shift,
+                seed,
+                file_prefix,
+                subfolder,
+                mcnl_lora,
+                snofs_lora,
+                male_lora
+            })
+        });
+        const result = await response.json();
+        if (result.success) {
+            showNotification(`Queued ${result.queued_count} image(s) from folder`, 'Image Batch Queued', 'success', 3000);
+            updateQueue();
+        } else {
+            showNotification('Error: ' + (result.error || 'Failed to queue image batch'), 'Error', 'error');
+        }
+    } catch (error) {
+        console.error('Error queueing image batch:', error);
+        showNotification('Error queueing image batch', 'Error', 'error');
+    }
+}
+
+// ============================================================================
+// REVEAL BROWSER
+// ============================================================================
+let revealShowOutput = false; // false = show input images, true = show output images
+let revealCurrentPath = '';
+let revealLinkedItems = [];
+let currentRevealIndex = -1;
+let revealFullscreenActive = false;
+let revealBaseFit = null; // {width, height} to keep same displayed size when toggling
+let revealBaseFitIndex = -1;
+
+function initializeRevealBrowser() {
+    const refreshBtn = document.getElementById('revealRefreshBtn');
+    const toggleBtn = document.getElementById('revealToggleViewBtn');
+    if (refreshBtn) refreshBtn.addEventListener('click', () => loadReveal(''));
+    if (toggleBtn) toggleBtn.addEventListener('click', toggleRevealView);
+    const fsToggleBtn = document.getElementById('fullscreenRevealToggle');
+    if (fsToggleBtn) fsToggleBtn.addEventListener('click', toggleRevealView);
+    // Auto-load when switching to tab
+    const revealTabBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.dataset.tab === 'reveal');
+    if (revealTabBtn) {
+        revealTabBtn.addEventListener('click', () => {
+            loadReveal(revealCurrentPath || '');
+        });
+    }
+}
+
+async function toggleRevealView() {
+    revealShowOutput = !revealShowOutput;
+    const toggleBtn = document.getElementById('revealToggleViewBtn');
+    toggleBtn.querySelector('span').textContent = revealShowOutput ? 'Show Input' : 'Show Output';
+    const fsToggleBtn = document.getElementById('fullscreenRevealToggle');
+    if (fsToggleBtn) {
+        fsToggleBtn.title = revealShowOutput ? 'Show Input' : 'Show Output';
+    }
+    // Reload data to ensure grids reflect new state
+    await loadReveal(revealCurrentPath || '');
+    // If fullscreen is active, show the first image of the selected view
+    if (isFullscreenActive) {
+        if (revealLinkedItems.length > 0 && currentRevealIndex >= 0) {
+            const it = revealLinkedItems[currentRevealIndex];
+            const src = revealShowOutput
+                ? (it.output ? `/outputs/${it.output.relative_path}` : null)
+                : `/api/image/input/${encodeURIComponent(it.input.path)}`;
+            if (src) {
+                openImageInFullscreen(src, true);
+                updateRevealFullscreenCounter();
+            } else {
+                // Fallback: pick first available in target view
+                const items = revealShowOutput ? (lastRevealData?.output_images || []) : (lastRevealData?.input_images || []);
+                if (items.length > 0) {
+                    const alt = revealShowOutput ? `/outputs/${items[0].relative_path}` : `/api/image/input/${encodeURIComponent(items[0].path)}`;
+                    openImageInFullscreen(alt, true);
+                    // Reset index to 0 since we switched to first item
+                    currentRevealIndex = 0;
+                    revealBaseFit = null;
+                    revealBaseFitIndex = currentRevealIndex;
+                    updateRevealFullscreenCounter();
+                }
+            }
+        } else {
+            const items = revealShowOutput ? (lastRevealData?.output_images || []) : (lastRevealData?.input_images || []);
+            if (items.length > 0) {
+                const src = revealShowOutput ? `/outputs/${items[0].relative_path}` : `/api/image/input/${encodeURIComponent(items[0].path)}`;
+                openImageInFullscreen(src, true);
+                currentRevealIndex = 0;
+                revealBaseFit = null;
+                revealBaseFitIndex = currentRevealIndex;
+                updateRevealFullscreenCounter();
+            }
+        }
+    }
+}
+
+let lastRevealData = null;
+
+async function loadReveal(path) {
+    try {
+        const response = await fetch(`/api/reveal?path=${encodeURIComponent(path || '')}`);
+        const data = await response.json();
+        if (!data.success) {
+            showNotification(data.error || 'Failed to load reveal browser', 'Error', 'error');
+            return;
+        }
+        lastRevealData = data;
+        revealCurrentPath = data.current_path || '';
+        revealLinkedItems = Array.isArray(data.pairs) ? data.pairs : [];
+        renderRevealBreadcrumb(revealCurrentPath);
+        if (revealLinkedItems.length > 0) {
+            renderRevealGridPairs();
+        } else {
+            renderRevealGrid(data);
+        }
+    } catch (error) {
+        console.error('Error loading reveal data:', error);
+        showNotification('Error loading reveal browser', 'Error', 'error');
+    }
+}
+
+function renderRevealBreadcrumb(path) {
+    const breadcrumb = document.getElementById('revealBreadcrumb');
+    const parts = path ? path.split(/[/\\]/).filter(p => p) : [];
+    let html = '<span class="breadcrumb-item" onclick="loadReveal(\'\')">📁 Processed</span>';
+    let cur = '';
+    parts.forEach(part => {
+        cur += (cur ? '/' : '') + part;
+        const pcopy = cur;
+        html += ' / ' + `<span class="breadcrumb-item" onclick="loadReveal('${pcopy}')">${escapeHtml(part)}</span>`;
+    });
+    breadcrumb.innerHTML = html;
+}
+
+function renderRevealGrid(data) {
+    const grid = document.getElementById('revealGrid');
+    const empty = document.getElementById('revealEmpty');
+    if (!grid || !empty) return;
+
+    // If no path selected, show folder list
+    if (!data.current_path) {
+        if (!data.folders || data.folders.length === 0) {
+            grid.style.display = 'none';
+            empty.style.display = 'block';
+            return;
+        }
+        let html = '';
+        data.folders.forEach(folder => {
+            html += `
+            <div class="gallery-item folder-item" onclick="loadReveal('${escapeHtml(folder.path)}')">
+                <div class="folder-icon">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                </div>
+                <div class="gallery-item-info">
+                    <div class="gallery-item-prompt">${escapeHtml(folder.name)}</div>
+                </div>
+            </div>`;
+        });
+        grid.innerHTML = html;
+        grid.style.display = 'grid';
+        empty.style.display = 'none';
+        return;
+    }
+
+    // Show images: input or output
+    const items = revealShowOutput ? (data.output_images || []) : (data.input_images || []);
+    if (!items || items.length === 0) {
+        grid.style.display = 'none';
+        empty.style.display = 'block';
+        empty.querySelector('p').textContent = revealShowOutput ? 'No output images' : 'No input images';
+        return;
+    }
+    let html = '';
+    items.forEach(item => {
+        const src = revealShowOutput ? `/outputs/${item.relative_path}` : `/api/image/input/${encodeURIComponent(item.path)}`;
+        const click = revealShowOutput ? `openRevealOutput('${item.relative_path}')` : `openRevealInput('${item.path}')`;
+        html += `
+        <div class="gallery-item" onclick="${click}">
+            <img src="${src}" alt="Image" class="gallery-item-image">
+            <div class="gallery-item-info">
+                <div class="gallery-item-prompt">${escapeHtml(item.filename)}</div>
+            </div>
+        </div>`;
+    });
+    grid.innerHTML = html;
+    grid.style.display = 'grid';
+    empty.style.display = 'none';
+}
+
+function renderRevealGridPairs() {
+    const grid = document.getElementById('revealGrid');
+    const empty = document.getElementById('revealEmpty');
+    if (!grid || !empty) return;
+
+    if (!revealLinkedItems || revealLinkedItems.length === 0) {
+        grid.style.display = 'none';
+        empty.style.display = 'block';
+        return;
+    }
+
+    let html = '';
+    revealLinkedItems.forEach((item, index) => {
+        const hasOutput = !!item.output;
+        const src = revealShowOutput
+            ? (hasOutput ? `/outputs/${item.output.relative_path}` : '')
+            : `/api/image/input/${encodeURIComponent(item.input.path)}`;
+        const label = revealShowOutput
+            ? (hasOutput ? item.output.filename : '(no output)')
+            : item.input.filename;
+        const onclick = `openRevealAtIndex(${index})`;
+        html += `
+        <div class="gallery-item ${!src ? 'disabled' : ''}" onclick="${onclick}">
+            ${src ? `<img src="${src}" alt="Image" class="gallery-item-image">` : `<div class="gallery-item-image" style="height:160px;display:flex;align-items:center;justify-content:center;color:var(--text-muted);background:var(--bg-secondary)">No Output</div>`}
+            <div class="gallery-item-info">
+                <div class="gallery-item-prompt">${escapeHtml(label)}</div>
+            </div>
+        </div>`;
+    });
+    grid.innerHTML = html;
+    grid.style.display = 'grid';
+    empty.style.display = 'none';
+}
+
+function openRevealAtIndex(index) {
+    if (!revealLinkedItems || index < 0 || index >= revealLinkedItems.length) return;
+    currentRevealIndex = index;
+    revealBaseFit = null;
+    revealBaseFitIndex = index;
+    const item = revealLinkedItems[index];
+    const src = revealShowOutput
+        ? (item.output ? `/outputs/${item.output.relative_path}` : null)
+        : `/api/image/input/${encodeURIComponent(item.input.path)}`;
+    if (!src) {
+        showNotification('No output image for this item', 'Missing Output', 'warning');
+        return;
+    }
+    revealFullscreenActive = true;
+    updateFullscreenRevealToggleVisibility();
+    openImageInFullscreen(src, true);
+}
+
+function openRevealInput(path) {
+    // Show input image in fullscreen viewer with toggle support
+    const viewer = document.getElementById('fullscreenViewer');
+    switchTab('reveal');
+    revealFullscreenActive = true;
+    currentRevealIndex = Math.max(0, (revealLinkedItems || []).findIndex(p => p.input && p.input.path === path));
+    revealBaseFit = null;
+    revealBaseFitIndex = currentRevealIndex;
+    updateFullscreenRevealToggleVisibility();
+    openImageInFullscreen(`/api/image/input/${encodeURIComponent(path)}`, true);
+}
+
+function openRevealOutput(relpath) {
+    const viewer = document.getElementById('fullscreenViewer');
+    switchTab('reveal');
+    revealFullscreenActive = true;
+    currentRevealIndex = Math.max(0, (revealLinkedItems || []).findIndex(p => p.output && p.output.relative_path === relpath));
+    revealBaseFit = null;
+    revealBaseFitIndex = currentRevealIndex;
+    updateFullscreenRevealToggleVisibility();
+    openImageInFullscreen(`/outputs/${relpath}`, true);
+}
+
+function openImageInFullscreen(src, fromReveal = false) {
+    const viewer = document.getElementById('fullscreenViewer');
+    // Activate viewer and show single image
+    viewer.classList.add('active');
+    isFullscreenActive = true;
+    const img = document.getElementById('fullscreenImage');
+    if (!fromReveal) {
+        img.style.width = '';
+        img.style.height = '';
+        img.style.maxWidth = '';
+        img.style.maxHeight = '';
+    }
+    img.src = src;
+    if (fromReveal && Array.isArray(revealLinkedItems) && revealLinkedItems.length > 0 && currentRevealIndex >= 0) {
+        document.getElementById('fullscreenCounter').textContent = `${currentRevealIndex + 1} / ${revealLinkedItems.length}`;
+    } else {
+        document.getElementById('fullscreenCounter').textContent = `1 / 1`;
+    }
+    resetZoom();
+    setupMouseActivityTracking();
+    setupZoomControls();
+    if (fromReveal) {
+        const container = document.getElementById('fullscreenImageContainer');
+        const applyBaseFit = () => {
+            if (!container || !img.naturalWidth || !img.naturalHeight) return;
+            const rect = container.getBoundingClientRect();
+            if (revealBaseFit == null || revealBaseFitIndex !== currentRevealIndex) {
+                const scale = Math.min(rect.width / img.naturalWidth, rect.height / img.naturalHeight);
+                revealBaseFit = {
+                    width: Math.floor(img.naturalWidth * scale),
+                    height: Math.floor(img.naturalHeight * scale)
+                };
+                revealBaseFitIndex = currentRevealIndex;
+            }
+            img.style.maxWidth = 'none';
+            img.style.maxHeight = 'none';
+            img.style.width = `${revealBaseFit.width}px`;
+            img.style.height = `${revealBaseFit.height}px`;
+        };
+        if (img.complete) {
+            applyBaseFit();
+        } else {
+            img.onload = () => applyBaseFit();
+        }
+    }
+    // Show/hide reveal toggle button in fullscreen based on context
+    const fsToggleBtn = document.getElementById('fullscreenRevealToggle');
+    if (fsToggleBtn) {
+        if (fromReveal) {
+            fsToggleBtn.style.display = 'inline-flex';
+            fsToggleBtn.title = revealShowOutput ? 'Show Input' : 'Show Output';
+        } else {
+            fsToggleBtn.style.display = 'none';
+        }
+    }
+}
+
+function updateFullscreenRevealToggleVisibility() {
+    const fsToggleBtn = document.getElementById('fullscreenRevealToggle');
+    if (!fsToggleBtn) return;
+    fsToggleBtn.style.display = revealFullscreenActive ? 'inline-flex' : 'none';
+    fsToggleBtn.title = revealShowOutput ? 'Show Input' : 'Show Output';
+}
+
+function updateRevealFullscreenCounter() {
+    const counter = document.getElementById('fullscreenCounter');
+    if (!counter) return;
+    if (revealFullscreenActive && Array.isArray(revealLinkedItems) && revealLinkedItems.length > 0 && currentRevealIndex >= 0) {
+        counter.textContent = `${currentRevealIndex + 1} / ${revealLinkedItems.length}`;
+    }
 }
 
 function extractParameters(basePrompt) {
