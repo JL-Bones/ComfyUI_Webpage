@@ -192,9 +192,13 @@ class ComfyUIClient:
         # Update use_image_size (node 34)
         modified["34"]["inputs"]["value"] = use_image_size
         
-        # Update image filename if provided (node 43)
-        if image_filename:
-            modified["43"]["inputs"]["image"] = image_filename
+        # Update image filename (node 43). Some workflows require a valid image path
+        # even in text-to-image mode. Provide a fallback to a permanent dummy image
+        # to avoid Bad Request errors from ComfyUI when the path is missing.
+        if not image_filename:
+            # Default dummy image path relative to ComfyUI input root
+            image_filename = "permanent/violet.webp"
+        modified["43"]["inputs"]["image"] = image_filename
         
         # Update LoRA booleans (nodes 41=MCNL, 42=Snofs, 33=Male)
         modified["41"]["inputs"]["value"] = mcnl_lora
@@ -202,6 +206,33 @@ class ComfyUIClient:
         modified["33"]["inputs"]["value"] = male_lora
         
         return modified
+
+    def unload_models(self) -> None:
+        """Call ComfyUI to unload models (free VRAM/RAM caches)."""
+        url = f"http://{self.server_address}/unload"
+        req = urllib.request.Request(url, method="POST")
+        try:
+            with urllib.request.urlopen(req) as response:
+                # ComfyUI may return empty response; handle gracefully
+                _ = response.read().decode("utf-8").strip()
+        except urllib.error.URLError as e:
+            # Log and continue; unloading failures shouldn't crash the app
+            print(f"Error calling /unload: {e}")
+        except Exception as e:
+            print(f"Unexpected error unloading models: {e}")
+
+    def clear_cache(self) -> None:
+        """Call ComfyUI to clear caches via /free endpoint."""
+        url = f"http://{self.server_address}/free"
+        req = urllib.request.Request(url, method="POST")
+        try:
+            with urllib.request.urlopen(req) as response:
+                # ComfyUI /free often returns empty or non-JSON; just read and ignore
+                _ = response.read().decode("utf-8").strip()
+        except urllib.error.URLError as e:
+            print(f"Error calling /free: {e}")
+        except Exception as e:
+            print(f"Unexpected error clearing cache: {e}")
     
     def generate_image(
         self,

@@ -45,10 +45,68 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeEventListeners();
     initializeTabs();
     initializeMobileOverlay();
+    initializeDeviceFullscreenSync();
     browseFolder('');
     startQueueUpdates();
     startHardwareMonitoring();
 });
+
+// Device Fullscreen Sync for Reveal fullscreen viewer
+function initializeDeviceFullscreenSync() {
+    // Use MutationObserver to detect when fullscreen overlay is activated
+    const observer = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+            if (m.type === 'attributes' && m.target.classList && m.target.classList.contains('fullscreen-viewer')) {
+                const isActive = m.target.classList.contains('active');
+                if (isActive) {
+                    requestDeviceFullscreen(m.target);
+                } else {
+                    exitDeviceFullscreen();
+                }
+            }
+        }
+    });
+    // Observe any existing fullscreen viewer containers
+    document.querySelectorAll('.fullscreen-viewer').forEach(el => {
+        observer.observe(el, { attributes: true, attributeFilter: ['class'] });
+    });
+    // Also observe DOM for newly added fullscreen viewer elements
+    const domObserver = new MutationObserver(() => {
+        document.querySelectorAll('.fullscreen-viewer').forEach(el => {
+            // Ensure each element is observed once
+            observer.observe(el, { attributes: true, attributeFilter: ['class'] });
+        });
+    });
+    domObserver.observe(document.body, { childList: true, subtree: true });
+}
+
+function requestDeviceFullscreen(element) {
+    try {
+        const el = element || document.documentElement;
+        if (document.fullscreenElement) return; // already fullscreen
+        if (el.requestFullscreen) {
+            el.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+        } else if (el.webkitRequestFullscreen) { // Safari/iOS
+            el.webkitRequestFullscreen();
+        } else if (el.msRequestFullscreen) { // IE/Edge legacy
+            el.msRequestFullscreen();
+        }
+    } catch (e) {
+        console.warn('Fullscreen request failed:', e);
+    }
+}
+
+function exitDeviceFullscreen() {
+    try {
+        if (document.fullscreenElement) {
+            document.exitFullscreen().catch(() => {});
+        } else if (document.webkitFullscreenElement) {
+            document.webkitExitFullscreen();
+        }
+    } catch (e) {
+        console.warn('Exit fullscreen failed:', e);
+    }
+}
 
 // Mobile Overlay for Sidebar
 function initializeMobileOverlay() {
@@ -2075,6 +2133,22 @@ function handleKeyboard(e) {
             fullscreenPrevImage();
         } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
             fullscreenNextImage();
+        } else if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+            // In Reveal fullscreen, toggle between input/output instead of changing index
+            if (revealFullscreenActive) {
+                e.preventDefault();
+                toggleRevealView();
+            } else {
+                fullscreenPrevImage();
+            }
+        } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+            // In Reveal fullscreen, toggle between input/output instead of changing index
+            if (revealFullscreenActive) {
+                e.preventDefault();
+                toggleRevealView();
+            } else {
+                fullscreenNextImage();
+            }
         } else if (e.key === 'Escape') {
             closeFullscreen();
         } else if (e.key === '+' || e.key === '=') {
@@ -2106,32 +2180,6 @@ function handleKeyboard(e) {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
         generateImage();
-    }
-
-    // Reveal Browser keyboard navigation when not in fullscreen
-    const revealTab = document.getElementById('revealTab');
-    const isRevealActive = revealTab && revealTab.classList.contains('active');
-    if (isRevealActive && !fullscreenViewer.classList.contains('active')) {
-        if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
-            e.preventDefault();
-            if (currentRevealIndex < 0) {
-                currentRevealIndex = 0;
-            } else if (revealLinkedItems && currentRevealIndex < revealLinkedItems.length - 1) {
-                currentRevealIndex += 1;
-            }
-            openRevealAtIndex(currentRevealIndex);
-            return;
-        }
-        if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
-            e.preventDefault();
-            if (currentRevealIndex < 0) {
-                currentRevealIndex = 0;
-            } else if (revealLinkedItems && currentRevealIndex > 0) {
-                currentRevealIndex -= 1;
-            }
-            openRevealAtIndex(currentRevealIndex);
-            return;
-        }
     }
 }
 
